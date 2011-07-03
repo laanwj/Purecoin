@@ -448,7 +448,6 @@ scriptOps (Script ws) = runGet getOps . WS.toByteString $ ws
   push OP_CODESEPARATOR  s     = []:s
   push (OP o)            (h:s) = (o:h):s
 
-
 opsScript :: [[OP]] -> Script
 opsScript [] = error "opsScript: Script must be non-empty"
 opsScript s = Script . WS.fromByteString . runPut . mapM_ putOpSep . intercalate [OP_CODESEPARATOR] $ map (map OP) s
