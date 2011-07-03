@@ -5,12 +5,12 @@ module Purecoin.WordArray
 import Data.Word (Word8)
 import Data.Array.Unboxed (UArray, listArray, elems, bounds)
 import qualified Data.ByteString as BS
-import Purecoin.Utils (showHexByteStringLE)
+import Purecoin.Utils (showHexByteStringBE)
 
 newtype Word8s = Word8s { unWord8s :: UArray Int Word8 } deriving (Eq)
 
 instance Show Word8s where
-  show = showHexByteStringLE . toByteString
+  show = showHexByteStringBE . toByteString
 
 fromList :: [Word8] -> Word8s
 fromList l = Word8s $ listArray (1, (Prelude.length l)) l
