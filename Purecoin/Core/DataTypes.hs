@@ -1,6 +1,7 @@
 module Purecoin.Core.DataTypes
        ( Difficulty, target, fromTarget
        , Hash, hash0, hashBS
+       , Lock, unlocked, lockBlock, lockTime, lockView, LockView(..)
        ) where
 
 import Data.Word (Word32, Word8)
@@ -8,6 +9,8 @@ import Data.Bits (shiftR, shiftL, (.|.), (.&.))
 import Data.List (unfoldr)
 import Data.Monoid (mempty)
 import Data.Serialize (Serialize, get, getWord32le, put, putWord32le, encode)
+import Data.Time (UTCTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Control.Applicative ((<$>),(<*>))
 import Purecoin.Digest.SHA256 (Hash256, sha256)
 import Purecoin.Utils (showHexByteStringLE)
@@ -79,3 +82,47 @@ hashBS :: BS.ByteString -> Hash
 hashBS = Hash . round . encode . round
  where
    round = sha256 . BSL.fromChunks . (:[])
+
+newtype Lock = Lock Word32 deriving Eq
+
+instance Show Lock where
+  show = show . lockView
+
+instance Serialize Lock where
+  get = Lock <$> getWord32le
+
+  put (Lock l) = putWord32le l
+
+unlocked :: Lock
+unlocked = Lock 0
+
+lockBlockMaxValue :: Word32
+lockBlockMaxValue = 500000000
+
+lockBlock :: Integer -> Maybe Lock
+lockBlock n | n < 1                           = fail "lockBlock: input too small"
+            | n < toInteger lockBlockMaxValue = return . Lock . fromInteger $ n
+            | otherwise                       = fail "lockBlock: input too large"
+
+lockTime :: UTCTime -> Maybe Lock
+lockTime t | wt < toInteger lockBlockMaxValue     = fail "lockTime: input too small"
+           | wt <= toInteger (maxBound :: Word32) = return . Lock . fromInteger $ wt
+           | otherwise                            = fail "lockTime: input too large"
+  where
+    wt :: Integer
+    wt = round . utcTimeToPOSIXSeconds $ t
+
+data LockView = Unlocked
+              | LockBlock Integer
+              | LockTime  UTCTime
+              deriving Show
+
+-- again because C doesn't have easy disjoint types we are forced to deal with nonsense encodings
+-- such as this.
+-- We use a view to deconstruct a Lock because we don't want people to create Locks using
+-- contructors LockBlock or LockTime.  They might create out of range values.
+-- Yet we still want users to be able to pattern match on locks.
+lockView :: Lock -> LockView
+lockView (Lock 0) = Unlocked
+lockView (Lock x) | x < lockBlockMaxValue = LockBlock . toInteger $ x
+                  | otherwise             = LockTime . posixSecondsToUTCTime . fromIntegral $ x
