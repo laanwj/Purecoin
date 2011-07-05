@@ -1,10 +1,13 @@
 module Purecoin.Core.Serialize
        ( module Data.Serialize
-       , getVarInteger, getVarByteString
-       , putVarInteger, putVarByteString
+       , getVarInteger, getVarByteString, getList, getNEList
+       , putVarInteger, putVarByteString, putList, putNEList
        ) where
 
 import Data.Serialize
+import Data.Foldable (toList)
+import Data.NEList (NEList, listToNEList)
+import Control.Monad (replicateM)
 import qualified Data.ByteString as BS
 
 getVarInteger :: Get Integer
@@ -31,3 +34,17 @@ getVarByteString = do l <- getVarInteger
 
 putVarByteString :: BS.ByteString -> Put
 putVarByteString s = putVarInteger (toInteger (BS.length s)) >> putByteString s
+
+getList :: Serialize a => Get [a]
+getList = do len <- getVarInteger
+             replicateM (fromInteger len) get
+
+putList :: Serialize a => [a] -> Put
+putList xs = putVarInteger (toInteger (length xs)) >> mapM_ put xs
+
+getNEList :: Serialize a => Get (NEList a)
+getNEList = do l <- getList
+               maybe (fail "get (NEList): empty list") return (listToNEList l)
+
+putNEList :: Serialize a => (NEList a) -> Put
+putNEList = putList . toList

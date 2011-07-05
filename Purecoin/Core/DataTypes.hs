@@ -6,20 +6,22 @@ module Purecoin.Core.DataTypes
        , BTC(..)
        , TxInput, txiPreviousOutput, txiScript, txiFinal
        , TxOutput, txOutput, txoValue, txoScript
+       , Tx(..)
        ) where
 
 import Data.Word (Word64, Word32, Word8)
 import Data.Bits (shiftR, shiftL, (.|.), (.&.))
 import Data.List (unfoldr)
+import Data.NEList (NEList)
 import Data.Monoid (Monoid, mempty, mappend)
-import Data.Serialize ( Serialize
-                      , get, getWord32le, getWord64le
-                      , put, putWord32le, putWord64le
-                      , encode )
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Control.Monad (guard)
 import Control.Applicative ((<$>),(<*>))
+import Purecoin.Core.Serialize ( Serialize
+                               , get, getWord32le, getWord64le, getNEList
+                               , put, putWord32le, putWord64le, putNEList
+                               , encode )
 import Purecoin.Core.Script (Script)
 import Purecoin.Digest.SHA256 (Hash256, sha256)
 import Purecoin.Utils (showHexByteStringLE)
@@ -199,3 +201,16 @@ txOutput :: BTC -> Script -> Maybe TxOutput
 txOutput btc@(Satoshi v) s | v < 0     = fail $ "txOutput: value "++show btc++" too small"
                            | v <= toInteger (maxBound :: Word64) = return $ TxOutput (fromInteger v) s
                            | otherwise = fail $ "txOutput: value "++show btc++" too large"
+
+data Tx = Tx { txVersion :: Word32 -- I think the txVersion should be restricted to 1, but this isn't how bitcoin works.
+             , txIn :: NEList TxInput
+             , txOut :: NEList TxOutput
+             , txLock :: Lock
+             } deriving Show
+
+-- The bitcoin client checks to see that all the txiPreviousOutput's are not hash0.
+-- This check isn't really needed.
+-- It is extremely unlikely that any Tx referenceing hash0 will make it into the block chain.
+instance Serialize Tx where
+  get = Tx <$> getWord32le <*> getNEList <*> getNEList <*> get
+  put (Tx v is os t) = putWord32le v >> putNEList is >> putNEList os >> put t
