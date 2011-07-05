@@ -183,7 +183,7 @@ instance Serialize TxInput where
 
   put (TxInput p s sq) = put p >> put s >> putWord32le sq
 
-data TxOutput = TxOutput { txoValue_ :: !Word64
+data TxOutput = TxOutput { txoValue_ :: !Word64 -- bitcoin uses an Int64, but it doesn't really matter.
                          , txoScript :: !Script
                          } deriving Show
 
