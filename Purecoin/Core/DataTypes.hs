@@ -213,4 +213,5 @@ data Tx = Tx { txVersion :: Word32 -- I think the txVersion should be restricted
 -- It is extremely unlikely that any Tx referenceing hash0 will make it into the block chain.
 instance Serialize Tx where
   get = Tx <$> getWord32le <*> getNEList <*> getNEList <*> get
+
   put (Tx v is os t) = putWord32le v >> putNEList is >> putNEList os >> put t
