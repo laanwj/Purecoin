@@ -7,6 +7,7 @@ module Purecoin.Core.DataTypes
        , TxInput, txiPreviousOutput, txiScript, txiFinal
        , TxOutput, txOutput, txoValue, txoScript
        , Tx(..)
+       , TxCoinBase, txCoinBase, txcbVersion, txcbExtraNonce, txcbFinal, txcbOut, txcbLock
        ) where
 
 import Data.Word (Word64, Word32, Word8)
@@ -19,8 +20,8 @@ import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Control.Monad (guard)
 import Control.Applicative ((<$>),(<*>))
 import Purecoin.Core.Serialize ( Serialize
-                               , get, getWord32le, getWord64le, getNEList
-                               , put, putWord32le, putWord64le, putNEList
+                               , get, getWord32le, getWord64le, getVarInteger, getNEList
+                               , put, putWord32le, putWord64le, putVarInteger, putNEList
                                , encode )
 import Purecoin.Core.Script (Script)
 import Purecoin.Digest.SHA256 (Hash256, sha256)
@@ -183,7 +184,7 @@ txiFinal txi = txiFinal_ txi == maxBound
 instance Serialize TxInput where
   get = TxInput <$> get <*> get <*> getWord32le
 
-  put (TxInput p s sq) = put p >> put s >> putWord32le sq
+  put (TxInput p s f) = put p >> put s >> putWord32le f
 
 data TxOutput = TxOutput { txoValue_ :: !Word64 -- bitcoin uses an Int64, but it doesn't really matter.
                          , txoScript :: !Script
@@ -215,3 +216,33 @@ instance Serialize Tx where
   get = Tx <$> getWord32le <*> getNEList <*> getNEList <*> get
 
   put (Tx v is os t) = putWord32le v >> putNEList is >> putNEList os >> put t
+
+data TxCoinBase = TxCoinBase { txcbVersion :: Word32
+                             , txcbExtraNonce :: Script
+                             , txcbFinal_ :: Word32
+                             , txcbOut :: NEList TxOutput
+                             , txcbLock :: Lock
+                             } deriving Show
+
+instance Serialize TxCoinBase where
+  get = do v <- getWord32le
+           1 <- getVarInteger
+           h <- get
+           guard (h == hash0)
+           (-1) <- getWord32le -- the null output index
+           en <- get
+           f <- getWord32le
+           os <- getNEList
+           t <- get
+           return $ TxCoinBase v en f os t
+
+  put (TxCoinBase v en sq os t) = putWord32le v >> putVarInteger 1 >> put hash0
+                               >> putWord32le (-1) >>  put en >> putWord32le sq
+                               >> putNEList os >> put t
+
+txcbFinal :: TxCoinBase -> Bool
+txcbFinal txcb = txcbFinal_ txcb == maxBound
+
+-- only builds coinbases that are final and unlocked
+txCoinBase :: Word32 -> Script -> NEList TxOutput -> TxCoinBase
+txCoinBase v en os = TxCoinBase v en maxBound os unlocked
