@@ -3,7 +3,7 @@ module Purecoin.Core.DataTypes
        , Difficulty, target, fromTarget, hashMeetsTarget
        , Lock, unlocked, lockBlock, lockTime, lockView, LockView(..)
        , OutPoint, outPoint, opHash, opIndex
-       , BTC(..), satoshi, scale
+       , BTC(..), btc, satoshi, scale
        , TxInput, txiPreviousOutput, txiScript, txiFinal
        , TxOutput, txOutput, txoValue, txoScript
        , Tx(..)
@@ -185,17 +185,20 @@ instance HasResolution E8 where
   resolution _ = 100000000
 
 -- We don't want BTC to be a Num because multiplication of a BTC by another BTC doesn't make sense.
-newtype BTC = BTC (Fixed E8) deriving (Eq, Ord, Show)
+newtype BTC = Ƀ (Fixed E8) deriving (Eq, Ord, Show)
 
 instance Monoid BTC where
-  mempty = BTC 0
-  (BTC x) `mappend` (BTC y) = BTC $ x + y
+  mempty = Ƀ 0
+  (Ƀ x) `mappend` (Ƀ y) = Ƀ (x + y)
+
+btc :: Fixed E8 -> BTC
+btc = Ƀ
 
 satoshi :: BTC
-satoshi = BTC (succ 0)
+satoshi = Ƀ (succ 0)
 
 scale :: Integer -> BTC -> BTC
-n `scale` (BTC x) = BTC $ fromInteger n * x
+n `scale` (Ƀ x) = Ƀ (fromInteger n * x)
 
 data TxInput = TxInput { txiPreviousOutput :: OutPoint
                        , txiScript :: Script
@@ -223,11 +226,11 @@ instance Serialize TxOutput where
   put (TxOutput v s) = putWord64le v >> put s
 
 txOutput :: BTC -> Script -> Maybe TxOutput
-txOutput (BTC btc) s | v < 0     = fail $ "txOutput: value "++show btc++" too small"
-                     | v <= toInteger (maxBound :: Word64) = return $ TxOutput (fromInteger v) s
-                     | otherwise = fail $ "txOutput: value "++show btc++" too large"
+txOutput (Ƀ btc) s | v < 0     = fail $ "txOutput: value "++show btc++" too small"
+                   | v <= toInteger (maxBound :: Word64) = return $ TxOutput (fromInteger v) s
+                   | otherwise = fail $ "txOutput: value "++show btc++" too large"
  where
-  (BTC tiny) = satoshi
+  (Ƀ tiny) = satoshi
   v = floor (btc / tiny)
 
 data Tx = Tx { txVersion :: Word32 -- I think the txVersion should be restricted to 1, but this isn't how bitcoin works.
