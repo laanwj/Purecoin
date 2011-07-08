@@ -3,7 +3,7 @@ module Purecoin.Core.DataTypes
        , Difficulty, target, fromTarget, hashMeetsTarget
        , Lock, unlocked, lockBlock, lockTime, lockView, LockView(..)
        , OutPoint, outPoint, opHash, opIndex
-       , BTC(..)
+       , BTC(..), satoshi, scale
        , TxInput, txiPreviousOutput, txiScript, txiFinal
        , TxOutput, txOutput, txoValue, txoScript
        , Tx(..)
@@ -18,6 +18,7 @@ import Data.NEList (NEList(..), (<|))
 import Data.Monoid (Monoid, mempty, mappend)
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
+import Data.Fixed (Fixed, HasResolution, resolution)
 import Control.Monad (guard, unless, replicateM)
 import Control.Applicative ((<$>),(<*>))
 import Purecoin.Core.Serialize ( Serialize, Get
@@ -178,20 +179,23 @@ outPoint :: Hash -> Word32 -> Maybe OutPoint
 outPoint h (-1) | h == hash0 = Nothing
 outPoint h i                 = Just (OutPoint h i)
 
+newtype E8 = E8 E8
+
+instance HasResolution E8 where
+  resolution _ = 100000000
+
 -- We don't want BTC to be a Num because multiplication of a BTC by another BTC doesn't make sense.
-newtype BTC = Satoshi Integer deriving (Eq, Ord)
+newtype BTC = BTC (Fixed E8) deriving (Eq, Ord, Show)
 
 instance Monoid BTC where
-  mempty = Satoshi 0
-  (Satoshi x) `mappend` (Satoshi y) = Satoshi $ x + y
+  mempty = BTC 0
+  (BTC x) `mappend` (BTC y) = BTC $ x + y
 
-instance Show BTC where
-  show (Satoshi x) = coins ++ "." ++ padFilings ++ filings ++ " BTC"
-    where
-      rawString = show x
-      len = length rawString
-      (coins,filings) = splitAt (8 - len) rawString
-      padFilings = replicate (8 - length filings) '0'
+satoshi :: BTC
+satoshi = BTC (succ 0)
+
+scale :: Integer -> BTC -> BTC
+n `scale` (BTC x) = BTC $ fromInteger n * x
 
 data TxInput = TxInput { txiPreviousOutput :: OutPoint
                        , txiScript :: Script
@@ -211,7 +215,7 @@ data TxOutput = TxOutput { txoValue_ :: !Word64 -- bitcoin uses an Int64, but it
                          } deriving Show
 
 txoValue :: TxOutput -> BTC
-txoValue = Satoshi . toInteger . txoValue_
+txoValue = (`scale` satoshi) . toInteger . txoValue_
 
 instance Serialize TxOutput where
   get = TxOutput <$> getWord64le <*> get
@@ -219,9 +223,12 @@ instance Serialize TxOutput where
   put (TxOutput v s) = putWord64le v >> put s
 
 txOutput :: BTC -> Script -> Maybe TxOutput
-txOutput btc@(Satoshi v) s | v < 0     = fail $ "txOutput: value "++show btc++" too small"
-                           | v <= toInteger (maxBound :: Word64) = return $ TxOutput (fromInteger v) s
-                           | otherwise = fail $ "txOutput: value "++show btc++" too large"
+txOutput (BTC btc) s | v < 0     = fail $ "txOutput: value "++show btc++" too small"
+                     | v <= toInteger (maxBound :: Word64) = return $ TxOutput (fromInteger v) s
+                     | otherwise = fail $ "txOutput: value "++show btc++" too large"
+ where
+  (BTC tiny) = satoshi
+  v = floor (btc / tiny)
 
 data Tx = Tx { txVersion :: Word32 -- I think the txVersion should be restricted to 1, but this isn't how bitcoin works.
              , txIn :: NEList TxInput
