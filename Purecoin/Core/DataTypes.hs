@@ -4,7 +4,7 @@ module Purecoin.Core.DataTypes
        , Lock, unlocked, lockBlock, lockTime, lockView, LockView(..)
        , OutPoint, outPoint, opHash, opIndex
        , BTC(..), btc, satoshi, scale
-       , TxInput, txiPreviousOutput, txiScript, txiFinal
+       , TxInput(..)
        , TxOutput, txOutput, txoValue, txoScript
        , Tx(..)
        , TxCoinBase, txCoinBase, txcbVersion, txcbExtraNonce, txcbFinal, txcbOut, txcbLock
@@ -202,16 +202,13 @@ n `scale` (Ƀ x) = Ƀ (fromInteger n * x)
 
 data TxInput = TxInput { txiPreviousOutput :: OutPoint
                        , txiScript :: Script
-                       , txiFinal_ :: Word32
+                       , txiSequence :: Word32
                        } deriving Show
-
-txiFinal :: TxInput -> Bool
-txiFinal txi = txiFinal_ txi == maxBound
 
 instance Serialize TxInput where
   get = TxInput <$> get <*> get <*> getWord32le
 
-  put (TxInput p s f) = put p >> put s >> putWord32le f
+  put (TxInput p s sq) = put p >> put s >> putWord32le sq
 
 data TxOutput = TxOutput { txoValue_ :: !Word64 -- bitcoin uses an Int64, but it doesn't really matter.
                          , txoScript :: !Script
