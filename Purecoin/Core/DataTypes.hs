@@ -6,7 +6,7 @@ module Purecoin.Core.DataTypes
        , BTC(..), btc, satoshi, scale
        , TxInput(..)
        , TxOutput, txOutput, txoValue, txoScript
-       , Tx(..)
+       , GeneralizedTx(..), Tx
        , TxCoinBase, txCoinBase, txcbVersion, txcbExtraNonce, txcbFinal, txcbOut, txcbLock
        , Block, block, bVersion, bPrevBlock, bMerkle_root, bTimestamp, bBits, bCoinBase, bTxs, bHash
        ) where
@@ -15,15 +15,16 @@ import Data.Word (Word64, Word32, Word8)
 import Data.Bits (shiftR, shiftL, (.|.), (.&.))
 import Data.List (unfoldr)
 import Data.NEList (NEList(..), (<|))
+import Data.Foldable (Foldable, toList)
 import Data.Monoid (Monoid, mempty, mappend)
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Data.Fixed (Fixed, HasResolution, resolution)
 import Control.Monad (guard, unless, replicateM)
 import Control.Applicative ((<$>),(<*>))
-import Purecoin.Core.Serialize ( Serialize, Get
-                               , get, getWord32le, getWord64le, getVarInteger, getNEList
-                               , put, putWord32le, putWord64le, putVarInteger, putNEList
+import Purecoin.Core.Serialize ( Serialize, Get, FromList
+                               , get, getWord32le, getWord64le, getVarInteger, getList
+                               , put, putWord32le, putWord64le, putVarInteger, putList
                                , encode, runPut )
 import Purecoin.Core.Script (Script)
 import Purecoin.Digest.SHA256 (Hash256, sha256)
@@ -230,19 +231,30 @@ txOutput (Ƀ btc) s | v < 0     = fail $ "txOutput: value "++show btc++" too sma
   (Ƀ tiny) = satoshi
   v = floor (btc / tiny)
 
-data Tx = Tx { txVersion :: Word32 -- I think the txVersion should be restricted to 1, but this isn't how bitcoin works.
-             , txIn :: NEList TxInput
-             , txOut :: NEList TxOutput
-             , txLock :: Lock
-             } deriving Show
+type Tx = GeneralizedTx NEList
+
+data GeneralizedTx f = Tx { txVersion :: Word32 -- I think the txVersion should be restricted to 1, but this isn't how bitcoin works.
+                          , txIn :: NEList TxInput
+                          , txOut :: f TxOutput
+                          , txLock :: Lock
+                          }
+
+instance (Foldable f) => Show (GeneralizedTx f) where
+  showsPrec d tx = showParen (10 < d) showStr
+   where
+     showStr = showString "Tx {txVersion = " . shows (txVersion tx)
+             . showString "; txIn = " . shows (txIn tx)
+             . showString "; txOut = " . shows (toList (txOut tx))
+             . showString "; txLock = " . shows (txLock tx)
+             . showString "}"
 
 -- The bitcoin client checks to see that all the txiPreviousOutput's are not hash0.
 -- This check isn't really needed.
 -- It is extremely unlikely that any Tx referenceing hash0 will make it into the block chain.
-instance Serialize Tx where
-  get = Tx <$> getWord32le <*> getNEList <*> getNEList <*> get
+instance (FromList f, Foldable f) => Serialize (GeneralizedTx f) where
+  get = Tx <$> getWord32le <*> getList <*> getList <*> get
 
-  put (Tx v is os t) = putWord32le v >> putNEList is >> putNEList os >> put t
+  put (Tx v is os t) = putWord32le v >> putList is >> putList os >> put t
 
 data TxCoinBase = TxCoinBase { txcbVersion :: Word32
                              , txcbExtraNonce :: Script
@@ -259,13 +271,13 @@ instance Serialize TxCoinBase where
            (-1) <- getWord32le -- the null output index
            en <- get
            f <- getWord32le
-           os <- getNEList
+           os <- getList
            t <- get
            return $ TxCoinBase v en f os t
 
   put (TxCoinBase v en sq os t) = putWord32le v >> putVarInteger 1 >> put hash0
                                >> putWord32le (-1) >>  put en >> putWord32le sq
-                               >> putNEList os >> put t
+                               >> putList os >> put t
 
 txcbFinal :: TxCoinBase -> Bool
 txcbFinal txcb = txcbFinal_ txcb == maxBound

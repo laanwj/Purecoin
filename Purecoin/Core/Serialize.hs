@@ -1,11 +1,12 @@
 module Purecoin.Core.Serialize
        ( module Data.Serialize
-       , getVarInteger, getVarByteString, getList, getNEList
-       , putVarInteger, putVarByteString, putList, putNEList
+       , FromList
+       , getVarInteger, getVarByteString, getList
+       , putVarInteger, putVarByteString, putList
        ) where
 
 import Data.Serialize
-import Data.Foldable (toList)
+import Data.Foldable (Foldable, toList)
 import Data.NEList (NEList, listToNEList)
 import Control.Monad (replicateM)
 import qualified Data.ByteString as BS
@@ -35,16 +36,21 @@ getVarByteString = do l <- getVarInteger
 putVarByteString :: BS.ByteString -> Put
 putVarByteString s = putVarInteger (toInteger (BS.length s)) >> putByteString s
 
-getList :: Serialize a => Get [a]
+class FromList f where
+  fromList :: Monad m => [a] -> m (f a)
+
+instance FromList [] where
+  fromList = return
+
+instance FromList NEList where
+  fromList l = maybe (fail "get (NEList): empty list") return (listToNEList l)
+
+getList :: (FromList f, Serialize a) => Get (f a)
 getList = do len <- getVarInteger
-             replicateM (fromInteger len) get
+             l <- replicateM (fromInteger len) get
+             fromList l
 
-putList :: Serialize a => [a] -> Put
-putList xs = putVarInteger (toInteger (length xs)) >> mapM_ put xs
-
-getNEList :: Serialize a => Get (NEList a)
-getNEList = do l <- getList
-               maybe (fail "get (NEList): empty list") return (listToNEList l)
-
-putNEList :: Serialize a => (NEList a) -> Put
-putNEList = putList . toList
+putList :: (Foldable f, Serialize a) => f a -> Put
+putList xs = putVarInteger (toInteger (length l)) >> mapM_ put l
+  where
+    l = toList xs
