@@ -1,7 +1,9 @@
-module Purecoin.Utils (showHexByteStringBE, showHexByteStringLE, integerByteStringLE) where
+module Purecoin.Utils ( showHexByteStringBE, showHexByteStringLE
+                      , integerByteStringBE, integerByteStringLE
+                      ) where
 
 import Data.Word (Word8)
-import Data.Bits (shiftR, shiftL, (.|.), (.&.), bitSize)
+import Data.Bits (Bits, shiftR, shiftL, (.|.), (.&.), bitSize)
 import Data.Char (intToDigit)
 import qualified Data.ByteString as BS
 
@@ -17,7 +19,12 @@ showOctet w = [wordToDigit (shiftR w 4), wordToDigit (0x0f .&. w)]
    wordToDigit = intToDigit . fromIntegral
 
 integerByteStringLE :: BS.ByteString -> Integer
-integerByteStringLE = go . BS.unpack
+integerByteStringLE = wordsToIntegerLE . BS.unpack
+
+integerByteStringBE :: BS.ByteString -> Integer
+integerByteStringBE = wordsToIntegerLE . reverse . BS.unpack
+
+wordsToIntegerLE :: (Integral a, Bits a) => [a] -> Integer
+wordsToIntegerLE = foldr f 0
  where
-   go [] = 0
-   go (a:l) = (toInteger a) .|. shiftL (go l) (bitSize a)
+   f w n =  (toInteger w) .|. shiftL n (bitSize w)
