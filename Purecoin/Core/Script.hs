@@ -82,6 +82,7 @@ module Purecoin.Core.Script
        ) where
 
 import Data.List (intercalate)
+import Data.NEList (NEList(..), toList)
 import Control.Applicative ((<$>),(<*>))
 import Purecoin.Core.Serialize
        ( Serialize, Get, Put
@@ -438,16 +439,17 @@ instance Serialize Script where
 
   put (Script ws) = putVarByteString . WS.toByteString $ ws
 
--- TODO make this a non-empty list of lists
-scriptOps :: Script -> Either String [[OP]]
+scriptOps :: Script -> Either String (NEList [OP])
 scriptOps (Script ws) = runGet getOps . WS.toByteString $ ws
  where
   getOps = do empty <- isEmpty
-              if empty then return $ [[]]
+              if empty then return $ (NENil [])
                        else push <$> getOpSep <*> getOps
-  push OP_CODESEPARATOR  s     = []:s
-  push (OP o)            (h:s) = (o:h):s
+  push OP_CODESEPARATOR  s     = NECons [] s
+  -- TODO: use an headLens
+  push (OP o)            (NENil h) = NENil (o:h)
+  push (OP o)            (NECons h t) = NECons (o:h) t
 
-opsScript :: [[OP]] -> Script
-opsScript [] = error "opsScript: Script must be non-empty"
-opsScript s = Script . WS.fromByteString . runPut . mapM_ putOpSep . intercalate [OP_CODESEPARATOR] $ map (map OP) s
+
+opsScript :: NEList [OP] -> Script
+opsScript s = Script . WS.fromByteString . runPut . mapM_ putOpSep . intercalate [OP_CODESEPARATOR] $ map (map OP) (toList s)

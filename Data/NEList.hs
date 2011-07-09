@@ -1,6 +1,7 @@
 module Data.NEList
        ( NEList(..), listToNEList, headTailView
        , (<|), (|>), neAppend, appendNE
+       , F.toList
        ) where
 
 import Data.Monoid (mappend)
