@@ -8,13 +8,13 @@ import Data.Bits hiding (rotate)
 import Data.List
 import Data.Monoid
 import Data.Serialize
-import Hash
 import Control.Monad (ap, replicateM)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSC
 import qualified Data.Array.Unboxed as UA
 import Data.Array.Unboxed (UArray, listArray, elems)
+import Purecoin.Utils (showHexByteStringLE)
 
 pad :: BSL.ByteString -> BSL.ByteString
 pad = BSL.fromChunks . go 0 . BSL.toChunks
@@ -32,22 +32,17 @@ data Hash160 = Hash160 {-# UNPACK #-} !Word32
 
 instance Show Hash160 where
  showsPrec _ (Hash160 a b c d e) x =
-   (showHexBits . flipWord32 $ a) ++ " " ++
-   (showHexBits . flipWord32 $ b) ++ " " ++
-   (showHexBits . flipWord32 $ c) ++ " " ++
-   (showHexBits . flipWord32 $ d) ++ " " ++
-   (showHexBits . flipWord32 $ e) ++ x
+   (showHexBits a) ++ " " ++
+   (showHexBits b) ++ " " ++
+   (showHexBits c) ++ " " ++
+   (showHexBits d) ++ " " ++
+   (showHexBits e) ++ x
   where
-   flipWord32 :: Word32 -> Word32
-   flipWord32 x = (x .&. 0xff) `shiftL` 24    .|. (x .&. 0xff00) `shiftL` 8
-              .|. (x .&. 0xff0000) `shiftR` 8 .|. (x .&. 0xff000000) `shiftR` 24
+   showHexBits = showHexByteStringLE . encode
 
 instance Serialize Hash160 where
   get = Hash160 `fmap` getWord32le `ap` getWord32le `ap` getWord32le `ap` getWord32le `ap` getWord32le
   put (Hash160 a b c d e) = mapM_ putWord32le [a,b,c,d,e]
-
-instance Hash Hash160 where
-  toOctets (Hash160 x0 x1 x2 x3 x4) = bitsToOctets =<< [x0, x1, x2, x3, x4]
 
 instance Monoid Hash160 where
   mempty = Hash160 0 0 0 0 0

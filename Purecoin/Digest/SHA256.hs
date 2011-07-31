@@ -8,12 +8,12 @@ import Data.Bits
 import Data.List
 import Data.Monoid
 import Data.Serialize
-import Hash
 import Control.Monad (ap, replicateM)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSC
 import qualified Data.Hashable as H
+import Purecoin.Utils (showHexByteStringBE)
 
 ch, maj :: Word32 -> Word32 -> Word32 -> Word32
 ch x y z = (x .&. y) `xor` (complement x .&. z)
@@ -55,14 +55,16 @@ instance H.Hashable Hash256 where
 
 instance Show Hash256 where
  showsPrec _ (Hash256 a b c d e f g h) x =
-  (showHexBits a) ++ " " ++
-  (showHexBits b) ++ " " ++
-  (showHexBits c) ++ " " ++
-  (showHexBits d) ++ " " ++
-  (showHexBits e) ++ " " ++
-  (showHexBits f) ++ " " ++
-  (showHexBits g) ++ " " ++
-  (showHexBits h) ++ x
+   (showHexBits a) ++ " " ++
+   (showHexBits b) ++ " " ++
+   (showHexBits c) ++ " " ++
+   (showHexBits d) ++ " " ++
+   (showHexBits e) ++ " " ++
+   (showHexBits f) ++ " " ++
+   (showHexBits g) ++ " " ++
+   (showHexBits h) ++ x
+  where
+   showHexBits = showHexByteStringBE . encode
 
 instance Serialize Hash256 where
   get = Hash256 `fmap` getWord32be `ap` getWord32be `ap` getWord32be `ap` getWord32be
