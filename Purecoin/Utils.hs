@@ -1,5 +1,6 @@
 module Purecoin.Utils ( showHexByteStringBE, showHexByteStringLE
                       , integerByteStringBE, integerByteStringLE
+                      , integerToByteStringLE, integerToByteStringBE
                       ) where
 
 import Data.Word (Word8)
@@ -28,3 +29,11 @@ wordsToIntegerLE :: (Integral a, Bits a) => [a] -> Integer
 wordsToIntegerLE = foldr f 0
  where
    f w n =  (toInteger w) .|. shiftL n (bitSize w)
+
+-- produces a ByteString of length n
+integerToByteStringLE :: Int -> Integer -> BS.ByteString
+integerToByteStringLE n = BS.pack . take n . map (fromInteger . (.&. 0xff))
+                        . iterate (`shiftR` 8)
+
+integerToByteStringBE :: Int -> Integer -> BS.ByteString
+integerToByteStringBE n = BS.reverse . integerToByteStringLE n
