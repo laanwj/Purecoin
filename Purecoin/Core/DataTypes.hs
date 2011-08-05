@@ -1,6 +1,5 @@
 module Purecoin.Core.DataTypes
-       ( Hash, hash0, hashBS, hash, merkleHash
-       , Difficulty, target, fromTarget, hashMeetsTarget
+       ( Difficulty, target, fromTarget, hashMeetsTarget
        , Lock, unlocked, lockBlock, lockTime, lockView, LockView(..)
        , OutPoint, outPoint, opHash, opIndex
        , BTC(..), btc, satoshi, scale
@@ -22,57 +21,14 @@ import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Data.Fixed (Fixed, HasResolution, resolution)
 import Control.Monad (guard, unless, replicateM)
 import Control.Applicative ((<$>),(<*>))
+import qualified Data.Hashable as H
 import Purecoin.Core.Serialize ( Serialize, Get, FromList
                                , get, getWord32le, getWord64le, getVarInteger, getList
                                , put, putWord32le, putWord64le, putVarInteger, putList
                                , encode, runPut )
+import Purecoin.Core.Hash (Hash, hash0, hash, hashBS, merkleHash)
 import Purecoin.Core.Script (Script)
-import Purecoin.Digest.SHA256 (Hash256, sha256)
-import Purecoin.Utils (showHexByteStringLE, integerByteStringLE)
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as BSL
-import qualified Data.Hashable as H
-
--- the Ord instance makes it useful as a key for a Map
-newtype Hash = Hash Hash256 deriving (Eq, Ord)
-
-instance Serialize Hash where
-  get = Hash <$> get
-
-  put (Hash h) = put h
-
--- The standard way of displaying a bitcoin hash is in little endian format.
-instance Show Hash where
-  show = showHexByteStringLE . encode
-
-instance H.Hashable Hash where
-  hash (Hash h) = H.hash h
-
--- Like all crap C programs, the 0 value is copted to have a sepearate special meaning.
-hash0 :: Hash
-hash0 = Hash mempty
-
--- For some reason in bitcoin hashing is done by two separate rounds of sha256.
--- It makes hashing slower and shortens the effectiveness of the hash by close a little less than a bit.
--- I do not know what is gained by this.
-hashBS :: BS.ByteString -> Hash
-hashBS = Hash . round . encode . round
- where
-   round = sha256 . BSL.fromChunks . (:[])
-
-hash :: (Serialize a) => a -> Hash
-hash = hashBS . encode
-
-merkleHash :: NEList Hash -> Hash
-merkleHash (NENil x) = x
-merkleHash l = merkleHash (go l)
- where
-  merkle :: Hash -> Hash -> Hash
-  h1 `merkle` h2 = hashBS $ encode h1 `BS.append` encode h2
-  go :: NEList Hash -> NEList Hash
-  go (NENil x) = NENil (x `merkle` x)
-  go (NECons x (NENil y)) = NENil (x `merkle` y)
-  go (NECons x (NECons y l)) = NECons (x `merkle` y) (go l)
+import Purecoin.Utils (integerByteStringLE)
 
 -- for historical reasons the 9th bit of the difficulty encoding must always be 0.
 -- note: that even though one target may have multiple represenatations in this compact form,
