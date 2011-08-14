@@ -253,19 +253,18 @@ data Block = Block { bVersion :: Word32 -- unused
                    }
 
 instance Serialize Block where
-  get = do
-         v <- getWord32le
-         pb <- get
-         get :: Get Hash -- ignore the serialized merkle root; we will compute it ourselves
-         t <- getWord32le
-         b <- get
-         n <- getWord32le
-         len <- getVarInteger
-         unless (len < toInteger (maxBound :: Int))
-                (fail $ "get (Block) transaction list too long")
-         (cb,txs) <- if len == 0 then fail "get (Block): found only block header"
-                                 else (,) <$> get <*> replicateM (fromInteger len - 1) get
-         makeBlock v pb t b n cb txs
+  get = do v <- getWord32le
+           pb <- get
+           get :: Get Hash -- ignore the serialized merkle root; we will compute it ourselves
+           t <- getWord32le
+           b <- get
+           n <- getWord32le
+           len <- getVarInteger
+           unless (len < toInteger (maxBound :: Int))
+                  (fail $ "get (Block) transaction list too long")
+           (cb,txs) <- if len == 0 then fail "get (Block): found only block header"
+                                   else (,) <$> get <*> replicateM (fromInteger len - 1) get
+           makeBlock v pb t b n cb txs
 
   put bl@(Block v pb t b n cb txs) =
     putWord32le v >> put pb >> put (bMerkle_root bl) >>
