@@ -78,20 +78,28 @@ module Purecoin.Core.Script
            , OP_NOP1, OP_NOP2, OP_NOP3, OP_NOP4, OP_NOP5
            , OP_NOP6, OP_NOP7, OP_NOP8, OP_NOP9, OP_NOP10
            ), opPushData, opView
-       , Script, scriptOps, opsScript
+       , Script, scriptOps, opsScript, nullScript, runScripts
        ) where
 
-import Data.List (intercalate)
+import Data.List (intercalate, tails)
 import Data.NEList (NEList(..), toList)
 import Control.Applicative ((<$>),(<*>))
+import Control.Monad (guard)
+import qualified Control.Monad.State as MS
+import Data.ByteString (ByteString, singleton, empty)
+import Data.ByteString.Lazy (fromChunks)
 import Purecoin.Core.Serialize
        ( Serialize, Get, Put
        , get, getWord8, getWord16be, getWord32be, getVarByteString, getBytes
        , put, putWord8, putWord16be, putWord32be, putVarByteString, putByteString
-       , runGet, runPut
+       , runGet, runPut, encode, decode
        , isEmpty
        )
 import qualified Purecoin.WordArray as WS
+import Purecoin.Core.Hash (Hash, hash, Hash160, hash160BS)
+import Purecoin.Core.Signature (CoinSignature, csSig)
+import Purecoin.Crypto.EcDsaSecp256k1 (verifySignature)
+import Purecoin.Utils (integerByteStringBE)
 
 {- Normally one would merge all the OP_PUSHDATA into one consturctor; howenver
    OP_PUSHDATA x and OP_PUSHDATA1 x, etc all serial to different values, and these
@@ -453,3 +461,34 @@ scriptOps (Script ws) = runGet getOps . WS.toByteString $ ws
 
 opsScript :: NEList [OP] -> Script
 opsScript s = Script . WS.fromByteString . runPut . mapM_ putOpSep . intercalate [OP_CODESEPARATOR] $ map (map OP) (toList s)
+
+nullScript :: Script
+nullScript = Script . WS.fromList $ []
+
+runScript :: (CoinSignature -> Integer) -> [OP] -> MS.StateT [ByteString] Maybe ()
+runScript mkHash = mapM_ (go . opView)
+ where
+  pop = do {(top:bot) <- MS.get; MS.put bot; return top}
+  push x = MS.modify (x:)
+  true  = singleton 1
+  false = empty
+  pushBool True  = push true
+  pushBool False = push false
+  go (Left ws)                 = push (WS.toByteString ws)
+  go (Right OP_DUP)            = do {t <- pop; push t; push t}
+  go (Right OP_VERIFY)         = do {t <- pop; guard (t == true)}
+  go (Right OP_CHECKSIG)       = do pubkeycode <- pop
+                                    sigcode <- pop
+                                    pubkey <- MS.lift $ either (const Nothing) Just (decode pubkeycode)
+                                    cs <- MS.lift $ either (const Nothing) Just (decode sigcode)
+                                    let hsh = mkHash cs
+                                    let check = verifySignature pubkey (mkHash cs) (csSig cs)
+                                    pushBool check
+  go (Right OP_CHECKSIGVERIFY) = go (Right OP_CHECKSIG) >> go (Right OP_VERIFY)
+  go (Right OP_HASH160)        = pop >>= push . encode . hash160BS
+  go (Right OP_EQUAL)          = do {t1 <- pop; t2 <- pop; pushBool (t1 == t2)}
+  go (Right OP_EQUALVERIFY)    = go (Right OP_EQUAL) >> go (Right OP_VERIFY)
+  go (Right x)                 = error $ "runScript: unhandled "++show x
+
+runScripts :: ([[OP]] -> CoinSignature -> Integer) -> [[OP]] -> MS.StateT [ByteString] Maybe ()
+runScripts mkHash script = sequence_ $ zipWith runScript (map mkHash . tails $ script) script

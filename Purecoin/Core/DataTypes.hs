@@ -4,7 +4,7 @@ module Purecoin.Core.DataTypes
        , OutPoint, outPoint, opHash, opIndex
        , BTC(..), btc, satoshi, scale
        , TxInput(..)
-       , TxOutput, txOutput, txoValue, txoScript
+       , TxOutput, txOutput, txoValue, txoScript, nullOutput
        , GeneralizedTx(..), Tx
        , TxCoinBase, txCoinBase, txcbVersion, txcbExtraNonce, txcbFinal, txcbOut, txcbLock
        , Block, block, bVersion, bPrevBlock, bMerkle_root, bTimestamp, bBits, bCoinBase, bTxs, bHash
@@ -27,7 +27,7 @@ import Purecoin.Core.Serialize ( Serialize, Get, FromList
                                , put, putWord32le, putWord64le, putVarInteger, putList
                                , encode, runPut )
 import Purecoin.Core.Hash (Hash, hash0, hash, hashBS, merkleHash)
-import Purecoin.Core.Script (Script)
+import Purecoin.Core.Script (Script, nullScript)
 import Purecoin.Utils (integerByteStringLE)
 
 -- for historical reasons the 9th bit of the difficulty encoding must always be 0.
@@ -186,6 +186,9 @@ txOutput (Ƀ btc) s | v < 0     = fail $ "txOutput: value "++show btc++" too sma
  where
   (Ƀ tiny) = satoshi
   v = floor (btc / tiny)
+
+nullOutput :: TxOutput
+nullOutput = TxOutput (-1) nullScript
 
 type Tx = GeneralizedTx NEList
 

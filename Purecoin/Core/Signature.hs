@@ -1,6 +1,6 @@
 module Purecoin.Core.Signature
        ( HashKind(..)
-       , CoinSignature, csSig, csHashKind, csAnyoneCanPay, putHashType
+       , CoinSignature, csSig, csHashKind, csAnyoneCanPay, csHashType
        ) where
 
 import Data.Word (Word8)
@@ -37,5 +37,5 @@ instance Serialize CoinSignature where
   get = CoinSignature <$> get <*> getWord8
   put (CoinSignature sg ht) = put sg >> putWord8 ht
 
-putHashType :: CoinSignature -> ByteString
-putHashType = runPut . putWord32le . fromIntegral . csHashType_
+csHashType :: CoinSignature -> ByteString
+csHashType = runPut . putWord32le . fromIntegral . csHashType_
