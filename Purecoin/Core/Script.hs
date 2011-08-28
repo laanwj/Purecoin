@@ -78,13 +78,15 @@ module Purecoin.Core.Script
            , OP_NOP1, OP_NOP2, OP_NOP3, OP_NOP4, OP_NOP5
            , OP_NOP6, OP_NOP7, OP_NOP8, OP_NOP9, OP_NOP10
            ), opPushData, opView
-       , Script, scriptOps, opsScript, nullScript, runScripts
+       , Script, scriptOps, opsScript, nullScript
+       , MakeHash, ScriptMonad, doScripts, execScriptMonad
        ) where
 
 import Data.List (intercalate, tails)
 import Data.NEList (NEList(..), toList)
-import Control.Applicative ((<$>),(<*>))
+import Control.Applicative (Applicative, pure, (<$>), (<*>))
 import Control.Monad (guard)
+import qualified Control.Monad.Reader as MR
 import qualified Control.Monad.State as MS
 import Data.ByteString (ByteString, singleton, empty)
 import Data.ByteString.Lazy (fromChunks)
@@ -465,8 +467,8 @@ opsScript s = Script . WS.fromByteString . runPut . mapM_ putOpSep . intercalate
 nullScript :: Script
 nullScript = Script . WS.fromList $ []
 
-runScript :: (CoinSignature -> Integer) -> [OP] -> MS.StateT [ByteString] Maybe ()
-runScript mkHash = mapM_ (go . opView)
+doScript :: (CoinSignature -> Integer) -> [OP] -> MS.StateT [ByteString] Maybe ()
+doScript mkHash = mapM_ (go . opView)
  where
   pop = do {(top:bot) <- MS.get; MS.put bot; return top}
   push x = MS.modify (x:)
@@ -490,5 +492,28 @@ runScript mkHash = mapM_ (go . opView)
   go (Right OP_EQUALVERIFY)    = go (Right OP_EQUAL) >> go (Right OP_VERIFY)
   go (Right x)                 = error $ "runScript: unhandled "++show x
 
-runScripts :: ([[OP]] -> CoinSignature -> Integer) -> [[OP]] -> MS.StateT [ByteString] Maybe ()
-runScripts mkHash script = sequence_ $ zipWith runScript (map mkHash . tails $ script) script
+type MakeHash = [[OP]] -> CoinSignature -> Integer
+
+newtype ScriptMonad a = ScriptMonad (MR.ReaderT MakeHash (MS.StateT [ByteString] Maybe) a)
+
+instance Functor ScriptMonad where
+  fmap f (ScriptMonad sm) = ScriptMonad (fmap f sm)
+
+instance Applicative ScriptMonad where
+  pure = ScriptMonad . pure
+  ScriptMonad f <*> ScriptMonad x = ScriptMonad $ f <*> x
+
+instance Monad ScriptMonad where
+  return = ScriptMonad . return
+  fail = ScriptMonad . fail
+  ScriptMonad x >>= f = ScriptMonad $ (x >>= \x' -> let ScriptMonad y' = f x' in y')
+
+doScripts :: [[OP]] -> ScriptMonad ()
+doScripts script = ScriptMonad . MR.ReaderT $ go
+ where
+  go mkHash = sequence_ $ zipWith doScript (map mkHash . tails $ script) script
+
+execScriptMonad :: MakeHash -> ScriptMonad () -> Maybe ()
+execScriptMonad mkHash (ScriptMonad sm) = do
+  (top:_) <- MS.execStateT (MR.runReaderT sm mkHash) []
+  guard (top == singleton 1)
