@@ -8,10 +8,9 @@ import Control.Monad (guard)
 import Data.List (unfoldr, sort)
 import Data.Maybe (listToMaybe)
 import Data.Monoid (mempty, mconcat)
-import Data.Time (UTCTime, getCurrentTime, addUTCTime, diffUTCTime)
+import Data.Time (UTCTime, addUTCTime, diffUTCTime)
 import Data.Word (Word32)
 import Control.Monad.State as SM
-import Control.Monad.Error (ErrorT, runErrorT)
 import qualified Data.PSQueue as PSQ
 import Data.NEList (NEList(..), toList)
 import qualified Purecoin.WordArray as WS
@@ -79,8 +78,8 @@ newChain version time difficulty nonce =
 getCoinMap :: BlockChain a -> Maybe CoinMap
 getCoinMap bc = (biCoinMap . PSQ.prio) <$> (PSQ.findMin . bcChain $ bc)
 
-addBlock :: Block -> BlockChain a -> IO (Either String (BlockChain a))
-addBlock bl bc = runErrorT $ do newBlockInfo <- go (chain bc prevHash)
+addBlock :: UTCTime -> Block -> BlockChain a -> Either String (BlockChain a)
+addBlock currentTime bl bc = do newBlockInfo <- go (chain bc prevHash)
                                 return $ bc{bcChain = PSQ.insert (bHash bl) newBlockInfo (bcChain bc)}
  where
   maxBits = maxTarget bc
@@ -128,10 +127,9 @@ addBlock bl bc = runErrorT $ do newBlockInfo <- go (chain bc prevHash)
         newDifficulty :: Integer
         newDifficulty = (target lastTarget) * clamp lowerTimeSpan (round timeSpan) upperTimeSpan `div` targetTimeSpan
       errTarget = "Block "++show (hash bl)++" should have difficulty "++show (target requiredBits)++ " but has difficulty "++show (target newBits)++" instead."
-    checkTimestamp = do currentTime <- lift $ getCurrentTime
-                        maybe (fail (errTimestamp currentTime)) return
-                            $ do pts <- prevTimestamp
-                                 guard (pts < newTimestamp && newTimestamp <= addUTCTime twoHours currentTime)
+    checkTimestamp = maybe (fail (errTimestamp currentTime)) return
+                   $ do pts <- prevTimestamp
+                        guard (pts < newTimestamp && newTimestamp <= addUTCTime twoHours currentTime)
      where
       twoHours = 2 * 60 * 60
       prevTimestamp = median . map (biTimestamp) . take 11 $ theChain
