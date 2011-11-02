@@ -4,7 +4,6 @@ module Purecoin.Core.BlockChain
 
 import Control.Applicative ((<$>))
 import Control.Arrow ((***), (&&&))
-import Control.Monad (guard)
 import Data.List (unfoldr, sort)
 import Data.Maybe (listToMaybe)
 import Data.Monoid (mempty, mconcat)
@@ -15,11 +14,11 @@ import qualified Data.PSQueue as PSQ
 import Data.NEList (NEList(..), toList)
 import qualified Purecoin.WordArray as WS
 import Purecoin.Core.Hash (Hash, hash0, hash)
-import Purecoin.Core.Script (opPushData, scriptOps, opsScript, OP(OP_CHECKSIG))
+import Purecoin.Core.Script (opPushData, opsScript, OP(OP_CHECKSIG))
 import Purecoin.Core.DataTypes ( Difficulty, target, fromTarget
                                , lockView, LockView(..)
                                , BTC(..)
-                               , txCoinBase, txcbExtraNonce, txcbLock, txcbFinal
+                               , txCoinBase, txcbLock, txcbFinal
                                , txLock, txIn, txiSequence
                                , txOutput
                                , Block, block, bPrevBlock, bBits, bTimestamp, bCoinBase, bTxs, bHash)
@@ -49,7 +48,8 @@ chain bc = unfoldr go
    go h = do bi <- PSQ.lookup h . bcChain $ bc
              return (bi, (biPrevBlock bi))
 
-coinValue n = Ƀ (50 / (2 ^ fromIntegral (n `div` 210000)))
+coinValue :: Integer -> BTC
+coinValue n = Ƀ (50 / (2 ^ (n `div` 210000)))
 
 work :: Difficulty -> Integer
 work x = sha256size `div` (target x + 1)
@@ -140,11 +140,11 @@ addBlock currentTime bl bc = do newBlockInfo <- go (chain bc prevHash)
       cbLock = (txcbLock &&& txcbFinal) newCoinBase
       txLocks = map (txLock &&& (all txiFinal . toList . txIn)) newTxs
       txiFinal txi = txiSequence txi == maxBound
-      isFinalTx (lock, finalSeq) = finalSeq || go (lockView lock)
+      isFinalTx (lock, finalSeq) = finalSeq || check (lockView lock)
        where
-        go Unlocked = True
-        go (LockBlock n) = newNumber < n
-        go (LockTime t) = newTimestamp < t
+        check Unlocked = True
+        check (LockBlock n) = newNumber < n
+        check (LockTime t) = newTimestamp < t
 
 
 median :: (Ord a) => [a] -> Maybe a
@@ -153,6 +153,7 @@ median l = Just (sl!!((length sl) `div` 2))
   where
     sl = sort l
 
+clamp :: (Ord a) => a -> a -> a -> a
 clamp low x high | x < low = low
                  | high < x = high
                  | otherwise = x

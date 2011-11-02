@@ -5,10 +5,9 @@ module Purecoin.Digest.SHA256 (sha256, sha256Ascii, Hash256) where
 
 import Data.Word
 import Data.Bits
-import Data.List
 import Data.Monoid
 import Data.Serialize
-import Control.Monad (ap, replicateM)
+import Control.Monad (ap)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSC
@@ -24,6 +23,7 @@ bigSigma0 x = rotateR x 2 `xor` rotateR x 13 `xor` rotateR x 22
 bigSigma1 x = rotateR x 6 `xor` rotateR x 11 `xor` rotateR x 25
 smallSigma0 x = rotateR x 7 `xor` rotateR x 18 `xor` shiftR x 3
 smallSigma1 x = rotateR x 17 `xor` rotateR x 19 `xor` shiftR x 10
+ks :: [Word32]
 ks = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5
      ,0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174
      ,0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da
@@ -51,7 +51,7 @@ data Hash256 = Hash256 {-# UNPACK #-} !Word32
                        {-# UNPACK #-} !Word32 deriving (Eq, Ord)
 
 instance H.Hashable Hash256 where
-  hash (Hash256 a b c d e f g h) = fromIntegral h
+  hash (Hash256 _ _ _ _ _ _ _ h) = fromIntegral h
 
 instance Show Hash256 where
  showsPrec _ (Hash256 a b c d e f g h) x =
@@ -84,16 +84,15 @@ data Buffer = Buffer {-# UNPACK #-} !Hash256
                      {-# UNPACK #-} !Hash256
 
 shaStep :: Hash256 -> Buffer -> Hash256
-shaStep h m = go ks m h `mappend` h
+shaStep hsh0 m = go ks m hsh0 `mappend` hsh0
  where
-  go [] _ h  = h
-  go (k:ks) (Buffer (Hash256 a0 a1 a2 a3 a4 a5 a6 a7) (Hash256 a8 a9 aa ab ac ad ae af)) h =
-    go ks (Buffer (Hash256 a1 a2 a3 a4 a5 a6 a7 a8) (Hash256 a9 aa ab ac ad ae af ag)) h'
+  go [] _ hsh  = hsh
+  go (k:ks') (Buffer (Hash256 a0 a1 a2 a3 a4 a5 a6 a7) (Hash256 a8 a9 aa ab ac ad ae af)) hsh =
+    go ks' (Buffer (Hash256 a1 a2 a3 a4 a5 a6 a7 a8) (Hash256 a9 aa ab ac ad ae af ag)) (mkStep3 a0 hsh)
    where
-    h' = mkStep3 k a0 h
     ag = smallSigma ae a9 a1 a0
     smallSigma a b c d = smallSigma1 a + b + smallSigma0 c + d
-    mkStep3 k w (Hash256 a b c d e f g h) = Hash256 (t1+t2) a b c (d+t1) e f g
+    mkStep3 w (Hash256 a b c d e f g h) = Hash256 (t1+t2) a b c (d+t1) e f g
      where
       t1 = h + bigSigma1 e + ch e f g + k + w
       t2 = bigSigma0 a + maj a b c

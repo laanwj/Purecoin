@@ -6,7 +6,7 @@ module Purecoin.Core.Signature
 import Data.Word (Word8)
 import Data.Bits ((.&.), testBit)
 import Control.Applicative ((<$>), (<*>))
-import Data.ByteString (ByteString, pack)
+import Data.ByteString (ByteString)
 import Purecoin.Core.Serialize ( Serialize, runPut
                                , get, getWord8
                                , put, putWord8, putWord32le

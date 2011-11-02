@@ -13,7 +13,6 @@ import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Monoid (Monoid, mempty, mappend)
 import Data.Ratio (numerator, denominator)
 import Control.Monad (guard,unless)
-import Control.Applicative ((<$>), (<*>))
 import Data.ByteString (pack, unpack)
 import Data.Serialize ( Serialize, Put
                       , get, getWord8, getBytes

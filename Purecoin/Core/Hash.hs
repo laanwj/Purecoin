@@ -37,9 +37,9 @@ hash0 = Hash mempty
 -- It makes hashing slower and shortens the effectiveness of the hash by close a little less than a bit.
 -- I do not know what is gained by this.
 hashBS :: ByteString -> Hash
-hashBS = Hash . round . encode . round
+hashBS = Hash . shaRound . encode . shaRound
  where
-   round = sha256 . fromChunks . (:[])
+   shaRound = sha256 . fromChunks . (:[])
 
 hash :: (Serialize a) => a -> Hash
 hash = hashBS . encode
@@ -53,7 +53,7 @@ merkleHash l = merkleHash (go l)
   go :: NEList Hash -> NEList Hash
   go (NENil x) = NENil (x `merkle` x)
   go (NECons x (NENil y)) = NENil (x `merkle` y)
-  go (NECons x (NECons y l)) = NECons (x `merkle` y) (go l)
+  go (NECons x (NECons y ys)) = NECons (x `merkle` y) (go ys)
 
 hash160BS :: ByteString -> Hash160
 hash160BS = round2 . encode . round1

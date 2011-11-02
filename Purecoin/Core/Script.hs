@@ -89,7 +89,6 @@ import Control.Monad (guard)
 import qualified Control.Monad.Reader as MR
 import qualified Control.Monad.State as MS
 import Data.ByteString (ByteString, singleton, empty)
-import Data.ByteString.Lazy (fromChunks)
 import Purecoin.Core.Serialize
        ( Serialize, Get, Put
        , get, getWord8, getWord16be, getWord32be, getVarByteString, getBytes
@@ -98,10 +97,9 @@ import Purecoin.Core.Serialize
        , isEmpty
        )
 import qualified Purecoin.WordArray as WS
-import Purecoin.Core.Hash (Hash, hash, Hash160, hash160BS)
+import Purecoin.Core.Hash (hash160BS)
 import Purecoin.Core.Signature (CoinSignature, csSig)
 import Purecoin.Crypto.EcDsaSecp256k1 (verifySignature)
-import Purecoin.Utils (integerByteStringBE)
 
 {- Normally one would merge all the OP_PUSHDATA into one consturctor; howenver
    OP_PUSHDATA x and OP_PUSHDATA1 x, etc all serial to different values, and these
@@ -483,7 +481,6 @@ doScript mkHash = mapM_ (go . opView)
                                     sigcode <- pop
                                     pubkey <- MS.lift $ either (const Nothing) Just (decode pubkeycode)
                                     cs <- MS.lift $ either (const Nothing) Just (decode sigcode)
-                                    let hsh = mkHash cs
                                     let check = verifySignature pubkey (mkHash cs) (csSig cs)
                                     pushBool check
   go (Right OP_CHECKSIGVERIFY) = go (Right OP_CHECKSIG) >> go (Right OP_VERIFY)

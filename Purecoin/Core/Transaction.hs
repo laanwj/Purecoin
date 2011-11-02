@@ -2,9 +2,7 @@ module Purecoin.Core.Transaction
        ( Coins, CoinMap, emptyCoinMap, coinMapSize, addCoins, addTransaction, prepcbTransaction
        ) where
 
-import Data.Bits (testBit, (.&.))
-import Data.Word (Word8)
-import Data.Maybe (fromMaybe, maybeToList)
+import Data.Maybe (fromMaybe)
 import Data.Monoid (mconcat, mappend)
 import qualified Data.Map as M
 import Control.Applicative ((<$>))
@@ -13,8 +11,8 @@ import qualified Control.Monad.State as SM
 import Data.NEList (NEList(..), (<|), appendNE, toList)
 import Data.ByteString (append)
 import Purecoin.Utils (integerByteStringBE)
-import Purecoin.Core.Serialize (encode, runPut, put, putWord32le)
-import Purecoin.Core.Script (OP, MakeHash, scriptOps, opsScript, doScripts, execScriptMonad)
+import Purecoin.Core.Serialize (encode)
+import Purecoin.Core.Script (MakeHash, scriptOps, opsScript, doScripts, execScriptMonad)
 import Purecoin.Core.Hash (Hash, hash, hashBS)
 import Purecoin.Core.DataTypes ( TxInput(..)
                                , GeneralizedTx(..), Tx
@@ -23,7 +21,7 @@ import Purecoin.Core.DataTypes ( TxInput(..)
                                , OutPoint, outPoint
                                , BTC
                                )
-import Purecoin.Core.Signature ( HashKind(..), CoinSignature
+import Purecoin.Core.Signature ( HashKind(..)
                                , csHashKind, csAnyoneCanPay, csHashType)
 
 data Coins = Coins [(OutPoint, TxOutput)]
@@ -39,6 +37,7 @@ newtype CoinMap = CoinMap (M.Map OutPoint TxOutput)
 emptyCoinMap :: CoinMap
 emptyCoinMap = CoinMap M.empty
 
+coinMapSize :: CoinMap -> Int
 coinMapSize (CoinMap m) = M.size m
 
 removeCoin :: (Monad m) => OutPoint -> SM.StateT CoinMap m TxOutput
@@ -49,6 +48,7 @@ removeCoin key = do (CoinMap cm) <- SM.get
  where
   errMsg = "Input "++show key++" not found"
 
+addCoins :: (Monad m) => Coins -> SM.StateT CoinMap m ()
 addCoins (Coins toInsert) = SM.modify $ \(CoinMap cm) -> CoinMap $ foldr (uncurry M.insert) cm toInsert
 
 addTransaction :: Tx -> SM.StateT CoinMap (Either String) (BTC,BTC)
@@ -85,7 +85,6 @@ prepcbTransaction (ins, otherOuts) tx
   txHash = hash tx
   txos = toList . txcbOut $ tx
   outs = mconcat (map txoValue txos) `mappend` otherOuts
-  toInsert = (hash tx, toList (txcbOut tx))
 
 getTxInputs :: Tx -> [(TxInput, MakeHash)]
 getTxInputs tx = map result . selections . toList . txIn $ tx
@@ -93,8 +92,8 @@ getTxInputs tx = map result . selections . toList . txIn $ tx
    result (l, m, r) = (m, makeHash l m r)
    setScript s txi = txi{txiScript = opsScript (NENil s)}
    makeHash l m r script sig = fromMaybe 1 $ do
-     tx <- newTx
-     return . integerByteStringBE . encode . hashBS $ encode tx `append` csHashType sig
+     ntx <- newTx
+     return . integerByteStringBE . encode . hashBS $ encode ntx `append` csHashType sig
     where
       newTx = do out <- newOut (csHashKind sig)
                  return Tx{ txVersion = txVersion tx

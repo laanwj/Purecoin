@@ -7,7 +7,7 @@ module Purecoin.Core.DataTypes
        , TxOutput, txOutput, txoValue, txoScript, nullOutput
        , GeneralizedTx(..), Tx
        , TxCoinBase, txCoinBase, txcbVersion, txcbExtraNonce, txcbFinal, txcbOut, txcbLock
-       , Block, block, bVersion, bPrevBlock, bMerkle_root, bTimestamp, bBits, bCoinBase, bTxs, bHash
+       , Block, block, bVersion, bPrevBlock, bMerkle_root, bTimestamp, bBits, bNonce, bCoinBase, bTxs, bHash
        ) where
 
 import Data.Word (Word64, Word32, Word8)
@@ -43,17 +43,17 @@ instance Serialize Difficulty where
 -- perhaps this code should be extended to support negative numbers; though they are not used
 -- in bitcoin at the moment.
 target :: Difficulty -> Integer
-target (Difficulty x) = shiftL man exp
+target (Difficulty x) = shiftL mant expo
   where
-    exp :: Int
-    exp = 8*(fromIntegral (shiftR x 24) - 3)
-    man = toInteger (x .&. 0x00ffffff)
+    expo :: Int
+    expo = 8*(fromIntegral (shiftR x 24) - 3)
+    mant = toInteger (x .&. 0x00ffffff)
 
 -- 0 <= y ==> target (fromTarget y) <= y
 fromTarget :: Integer -> Difficulty
-fromTarget y | y <= 0     = Difficulty 0
-             | 0xff < exp = Difficulty 0xff7fffff
-             | otherwise  = Difficulty (shiftL exp 24 .|. man)
+fromTarget y | y <= 0      = Difficulty 0
+             | 0xff < expo = Difficulty 0xff7fffff
+             | otherwise   = Difficulty (shiftL expo 24 .|. mant)
  where
    octets :: [Word8]
    octets = (unfoldr f y)
@@ -63,10 +63,10 @@ fromTarget y | y <= 0     = Difficulty 0
    len = length octets + if signedIntegerNonsenseForBitcoin then 1 else 0
    -- call to last is safe because y is positive hence octets is too.
    signedIntegerNonsenseForBitcoin = (last octets .&. 0x80 == 0x80)
-   exp :: Word32
-   exp = fromIntegral len
-   man :: Word32
-   man = fromInteger (shiftR y (8*(fromIntegral exp - 3)))
+   expo :: Word32
+   expo = fromIntegral len
+   mant :: Word32
+   mant = fromInteger (shiftR y (8*(fromIntegral expo - 3)))
 
 hashMeetsTarget :: Hash -> Difficulty -> Bool
 hashMeetsTarget h d = hi <= target d
@@ -180,12 +180,12 @@ instance Serialize TxOutput where
   put (TxOutput v s) = putWord64le v >> put s
 
 txOutput :: BTC -> Script -> Maybe TxOutput
-txOutput (Ƀ btc) s | v < 0     = fail $ "txOutput: value "++show btc++" too small"
-                   | v <= toInteger (maxBound :: Word64) = return $ TxOutput (fromInteger v) s
-                   | otherwise = fail $ "txOutput: value "++show btc++" too large"
+txOutput (Ƀ b) s | v < 0     = fail $ "txOutput: value "++show b++" too small"
+                 | v <= toInteger (maxBound :: Word64) = return $ TxOutput (fromInteger v) s
+                 | otherwise = fail $ "txOutput: value "++show b++" too large"
  where
   (Ƀ tiny) = satoshi
-  v = floor (btc / tiny)
+  v = floor (b / tiny)
 
 nullOutput :: TxOutput
 nullOutput = TxOutput (-1) nullScript
@@ -258,7 +258,7 @@ data Block = Block { bVersion :: Word32 -- unused
 instance Serialize Block where
   get = do v <- getWord32le
            pb <- get
-           get :: Get Hash -- ignore the serialized merkle root; we will compute it ourselves
+           _ <- get :: Get Hash -- ignore the serialized merkle root; we will compute it ourselves
            t <- getWord32le
            b <- get
            n <- getWord32le
