@@ -7,7 +7,7 @@ import Control.Arrow ((***), (&&&))
 import Data.List (unfoldr, sort)
 import Data.Maybe (listToMaybe)
 import Data.Monoid (mempty, mconcat)
-import Data.Time (UTCTime, addUTCTime, diffUTCTime)
+import Data.Time (UTCTime, addUTCTime, diffUTCTime, getCurrentTime)
 import Data.Word (Word32)
 import Control.Monad.State as SM
 import qualified Data.PSQueue as PSQ
@@ -78,74 +78,76 @@ newChain version time difficulty nonce =
 getCoinMap :: BlockChain a -> Maybe CoinMap
 getCoinMap bc = (biCoinMap . PSQ.prio) <$> (PSQ.findMin . bcChain $ bc)
 
-addBlock :: UTCTime -> Block -> BlockChain a -> Either String (BlockChain a)
-addBlock currentTime bl bc = do newBlockInfo <- go (chain bc prevHash)
-                                return $ bc{bcChain = PSQ.insert (bHash bl) newBlockInfo (bcChain bc)}
+addBlock :: Block -> IO (BlockChain a -> Either String (BlockChain a))
+addBlock bl = do ct <- getCurrentTime
+                 return $ updateBlockChain ct
  where
-  maxBits = maxTarget bc
   prevHash = bPrevBlock bl
   newCoinBase = bCoinBase bl
   newTxs = bTxs bl
   newBits = bBits bl
   newTimestamp = bTimestamp bl
-  go [] = fail $ "Previous block "++show prevHash++" not found"
-  go theChain@(prevBlockInfo:_) = do checkTarget
-                                     checkTimestamp
-                                     checkFinalTxs
-                                     (cbase, newMap) <- either fail return $ runStateT processTxs (biCoinMap prevBlockInfo)
-                                     return $ BlockInfo {biWork      = (biWork prevBlockInfo) + work (bBits bl)
-                                                        ,biNumber    = newNumber
-                                                        ,biPrevBlock = prevHash
-                                                        ,biTimestamp = newTimestamp
-                                                        ,biBits      = newBits
-                                                        ,biCoinMap   = maybe newMap (\cb -> SM.execState (addCoins cb) newMap) gradcb
-                                                        ,biCoinBase  = cbase
-                                                        }
-   where
-    newNumber = succ (biNumber prevBlockInfo)
-    processTxs = do fees <- mapM addTransaction newTxs
-                    let totalFees = (mconcat *** mconcat) . unzip $ (coinValue newNumber, mempty):fees
-                    lift (prepcbTransaction totalFees newCoinBase)
-    -- on the *next* block the 98th-block-before-the-previous-block's coinbase will be useable.
-    gradcb = fmap biCoinBase . listToMaybe . drop 98 $ theChain
-    checkTarget = maybe (fail errTarget) return $ guard (requiredBits == newBits)
+  updateBlockChain currentTime bc = do newBlockInfo <- go (chain bc prevHash)
+                                       return $ bc{bcChain = PSQ.insert (bHash bl) newBlockInfo (bcChain bc)}
+   where                                      
+    maxBits = maxTarget bc
+    go [] = fail $ "Previous block "++show prevHash++" not found"
+    go theChain@(prevBlockInfo:_) = do checkTarget
+                                       checkTimestamp
+                                       checkFinalTxs
+                                       (cbase, newMap) <- either fail return $ runStateT processTxs (biCoinMap prevBlockInfo)
+                                       return $ BlockInfo {biWork      = (biWork prevBlockInfo) + work (bBits bl)
+                                                          ,biNumber    = newNumber
+                                                          ,biPrevBlock = prevHash
+                                                          ,biTimestamp = newTimestamp
+                                                          ,biBits      = newBits
+                                                          ,biCoinMap   = maybe newMap (\cb -> SM.execState (addCoins cb) newMap) gradcb
+                                                          ,biCoinBase  = cbase
+                                                          }
      where
-      requiredBits | changeTarget = fromTarget (min newDifficulty (target maxBits))
-                   | otherwise    = lastTarget
+      newNumber = succ (biNumber prevBlockInfo)
+      processTxs = do fees <- mapM addTransaction newTxs
+                      let totalFees = (mconcat *** mconcat) . unzip $ (coinValue newNumber, mempty):fees
+                      lift (prepcbTransaction totalFees newCoinBase)
+      -- on the *next* block the 98th-block-before-the-previous-block's coinbase will be useable.
+      gradcb = fmap biCoinBase . listToMaybe . drop 98 $ theChain
+      checkTarget = maybe (fail errTarget) return $ guard (requiredBits == newBits)
        where
-        blocksPerTarget :: Int
-        blocksPerTarget = 14 * 24 * 6
-        tenMinutes     = 10 * 60
-        lastTarget = biBits prevBlockInfo
-        changeTarget = 0 == (fromIntegral (biNumber prevBlockInfo) + 1) `mod` blocksPerTarget
-        -- notice the time it takes to generate a new block after a change in difficutly isn't taken into account!
-        timeSpan = diffUTCTime (biTimestamp prevBlockInfo) (biTimestamp (theChain!!(blocksPerTarget-1)))
-        targetTimeSpan = toInteger (blocksPerTarget * tenMinutes)
-        lowerTimeSpan = targetTimeSpan `div` 4
-        upperTimeSpan = targetTimeSpan * 4
-        -- Try to round the same way the offical client does.
-        newDifficulty :: Integer
-        newDifficulty = (target lastTarget) * clamp lowerTimeSpan (round timeSpan) upperTimeSpan `div` targetTimeSpan
-      errTarget = "Block "++show (hash bl)++" should have difficulty "++show (target requiredBits)++ " but has difficulty "++show (target newBits)++" instead."
-    checkTimestamp = maybe (fail (errTimestamp currentTime)) return
-                   $ do pts <- prevTimestamp
-                        guard (pts < newTimestamp && newTimestamp <= addUTCTime twoHours currentTime)
-     where
-      twoHours = 2 * 60 * 60
-      prevTimestamp = median . map (biTimestamp) . take 11 $ theChain
-      errTimestamp ct = "Block "++show (hash bl)++" time of "++show newTimestamp++" is before "++show prevTimestamp++" or after currentTime "++show ct
-    checkFinalTxs = maybe (fail errFinalTxs) return $ guard (all isFinalTx (cbLock:txLocks))
-     where
-      errFinalTxs = "Block "++show (hash bl)++" contains non-final transactions" -- more precise error message needed.
-      cbLock = (txcbLock &&& txcbFinal) newCoinBase
-      txLocks = map (txLock &&& (all txiFinal . toList . txIn)) newTxs
-      txiFinal txi = txiSequence txi == maxBound
-      isFinalTx (lock, finalSeq) = finalSeq || check (lockView lock)
+        requiredBits | changeTarget = fromTarget (min newDifficulty (target maxBits))
+                     | otherwise    = lastTarget
+         where
+          blocksPerTarget :: Int
+          blocksPerTarget = 14 * 24 * 6
+          tenMinutes     = 10 * 60
+          lastTarget = biBits prevBlockInfo
+          changeTarget = 0 == (fromIntegral (biNumber prevBlockInfo) + 1) `mod` blocksPerTarget
+          -- notice the time it takes to generate a new block after a change in difficutly isn't taken into account!
+          timeSpan = diffUTCTime (biTimestamp prevBlockInfo) (biTimestamp (theChain!!(blocksPerTarget-1)))
+          targetTimeSpan = toInteger (blocksPerTarget * tenMinutes)
+          lowerTimeSpan = targetTimeSpan `div` 4
+          upperTimeSpan = targetTimeSpan * 4
+          -- Try to round the same way the offical client does.
+          newDifficulty :: Integer
+          newDifficulty = (target lastTarget) * clamp lowerTimeSpan (round timeSpan) upperTimeSpan `div` targetTimeSpan
+        errTarget = "Block "++show (hash bl)++" should have difficulty "++show (target requiredBits)++ " but has difficulty "++show (target newBits)++" instead."
+      checkTimestamp = maybe (fail (errTimestamp currentTime)) return
+                     $ do pts <- prevTimestamp
+                          guard (pts < newTimestamp && newTimestamp <= addUTCTime twoHours currentTime)
        where
-        check Unlocked = True
-        check (LockBlock n) = newNumber < n
-        check (LockTime t) = newTimestamp < t
-
+        twoHours = 2 * 60 * 60
+        prevTimestamp = median . map (biTimestamp) . take 11 $ theChain
+        errTimestamp ct = "Block "++show (hash bl)++" time of "++show newTimestamp++" is before "++show prevTimestamp++" or after currentTime "++show ct
+      checkFinalTxs = maybe (fail errFinalTxs) return $ guard (all isFinalTx (cbLock:txLocks))
+       where
+        errFinalTxs = "Block "++show (hash bl)++" contains non-final transactions" -- more precise error message needed.
+        cbLock = (txcbLock &&& txcbFinal) newCoinBase
+        txLocks = map (txLock &&& (all txiFinal . toList . txIn)) newTxs
+        txiFinal txi = txiSequence txi == maxBound
+        isFinalTx (lock, finalSeq) = finalSeq || check (lockView lock)
+         where
+          check Unlocked = True
+          check (LockBlock n) = newNumber < n
+          check (LockTime t) = newTimestamp < t
 
 median :: (Ord a) => [a] -> Maybe a
 median [] = Nothing

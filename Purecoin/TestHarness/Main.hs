@@ -110,9 +110,9 @@ updateBlock blk = do
   dbp <- askDb
   liftIO . putStrLn $ "processing block: "++show (bHash blk)++":"++show (bTimestamp blk)++":"
                       ++ show (sum [length . F.toList . txIn $ tx | tx<-(bTxs blk)])
-  ct <- liftIO getCurrentTime
+  modifyBlockChain <- liftIO $ addBlock blk
   liftIO . atomicModifyIORef dbp 
-         $ \db -> (\x -> (x,())) . either (\err -> trace err db) id . addBlock ct blk $ db
+         $ \db -> (\x -> (x,())) . either (\err -> trace err db) id . modifyBlockChain $ db
   -- liftIO $ print =<< readIORef dbp
 
 printTx :: MainIO a ()
