@@ -465,11 +465,13 @@ opsScript s = Script . WS.fromByteString . runPut . mapM_ putOpSep . intercalate
 nullScript :: Script
 nullScript = Script . WS.fromList $ []
 
-doScript :: (CoinSignature -> Integer) -> [OP] -> MS.StateT [ByteString] Maybe ()
+doScript :: (CoinSignature -> Integer) -> [OP] -> MS.StateT ([ByteString],[ByteString]) Maybe ()
 doScript mkHash = mapM_ (go . opView)
  where
-  pop = do {(top:bot) <- MS.get; MS.put bot; return top}
-  push x = MS.modify (x:)
+  getMain = do {(main,alt) <- MS.get; return main}
+  putMain x = do MS.modify $ \(_,alt) -> (x,alt)
+  pop = do {(top:bot) <- getMain; putMain bot; return top}
+  push x = do {main <- getMain; putMain (x:main)}
   true  = singleton 1
   false = empty
   pushBool True  = push true
@@ -491,7 +493,7 @@ doScript mkHash = mapM_ (go . opView)
 
 type MakeHash = [[OP]] -> CoinSignature -> Integer
 
-newtype ScriptMonad a = ScriptMonad (MR.ReaderT MakeHash (MS.StateT [ByteString] Maybe) a)
+newtype ScriptMonad a = ScriptMonad (MR.ReaderT MakeHash (MS.StateT ([ByteString],[ByteString]) Maybe) a)
 
 instance Functor ScriptMonad where
   fmap f (ScriptMonad sm) = ScriptMonad (fmap f sm)
@@ -512,5 +514,5 @@ doScripts script = ScriptMonad . MR.ReaderT $ go
 
 execScriptMonad :: MakeHash -> ScriptMonad () -> Maybe ()
 execScriptMonad mkHash (ScriptMonad sm) = do
-  (top:_) <- MS.execStateT (MR.runReaderT sm mkHash) []
+  (top:_,_) <- MS.execStateT (MR.runReaderT sm mkHash) ([],[])
   guard (top == singleton 1)
