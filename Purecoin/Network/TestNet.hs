@@ -1,4 +1,4 @@
-module Purecoin.Network.TestNet where
+module Purecoin.Network.TestNet
        ( magic, port, difficulty
        , Chain, startBlockChain
        ) where
