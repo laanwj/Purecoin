@@ -18,7 +18,7 @@ import Data.Serialize ( Serialize, Put
                       , get, getWord8, getBytes
                       , put, putWord8, putByteString
                       )
-import Purecoin.Utils (integerByteStringBE, integerToByteStringBE)
+import Purecoin.Utils (integerByteStringBE, integerToNByteStringBE)
 import Purecoin.Crypto.ZModule (ZModule, double, (<+>), opposite, (*+))
 
 -- size of the finite field the elliptic curve is over
@@ -78,7 +78,7 @@ instance Serialize Fp where
            let x = integerByteStringBE bs
            unless (x < p) (fail $ "not in Fp: "++show x)
            return (Fp x)
-  put (Fp a) = putByteString . integerToByteStringBE lengthp $ a
+  put (Fp a) = putByteString . integerToNByteStringBE lengthp $ a
 
 newtype Fn = Fn Integer deriving (Eq, Show)
 
