@@ -10,7 +10,7 @@ import Control.Monad (unless, zipWithM)
 import qualified Control.Monad.State as SM
 import Data.NEList (NEList(..), (<|), appendNE, toList)
 import Data.ByteString (append)
-import Purecoin.Utils (integerByteStringBE)
+import Purecoin.Utils (nonNegativeByteStringBE)
 import Purecoin.Core.Serialize (encode)
 import Purecoin.Core.Script (MakeHash, scriptOps, opsScript, doScripts, execScriptMonad)
 import Purecoin.Core.Hash (Hash, hash, hashBS)
@@ -93,7 +93,7 @@ getTxInputs tx = map result . selections . toList . txIn $ tx
    setScript s txi = txi{txiScript = opsScript (NENil s)}
    makeHash l m r script sig = fromMaybe 1 $ do
      ntx <- newTx
-     return . integerByteStringBE . encode . hashBS $ encode ntx `append` csHashType sig
+     return . nonNegativeByteStringBE . encode . hashBS $ encode ntx `append` csHashType sig
     where
       newTx = do out <- newOut (csHashKind sig)
                  return Tx{ txVersion = txVersion tx

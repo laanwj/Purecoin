@@ -28,7 +28,7 @@ import Purecoin.Core.Serialize ( Serialize, Get, FromList
                                , encode, runPut )
 import Purecoin.Core.Hash (Hash, hash0, hash, hashBS, merkleHash)
 import Purecoin.Core.Script (Script, nullScript)
-import Purecoin.Utils (integerByteStringLE)
+import Purecoin.Utils (nonNegativeByteStringLE)
 
 -- for historical reasons the 9th bit of the difficulty encoding must always be 0.
 -- note: that even though one target may have multiple represenatations in this compact form,
@@ -71,7 +71,7 @@ fromTarget y | y <= 0      = Difficulty 0
 hashMeetsTarget :: Hash -> Difficulty -> Bool
 hashMeetsTarget h d = hi <= target d
   where
-    hi = integerByteStringLE . encode $ h
+    hi = nonNegativeByteStringLE . encode $ h
 
 newtype Lock = Lock Word32 deriving Eq
 

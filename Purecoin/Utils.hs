@@ -1,5 +1,5 @@
 module Purecoin.Utils ( showHexByteStringBE, showHexByteStringLE
-                      , integerByteStringBE, integerByteStringLE
+                      , nonNegativeByteStringBE, nonNegativeByteStringLE
                       , integerToNByteStringLE, integerToNByteStringBE
                       ) where
 
@@ -19,14 +19,14 @@ showOctet w = [wordToDigit (shiftR w 4), wordToDigit (0x0f .&. w)]
  where
    wordToDigit = intToDigit . fromIntegral
 
-integerByteStringLE :: BS.ByteString -> Integer
-integerByteStringLE = wordsToIntegerLE . BS.unpack
+nonNegativeByteStringLE :: BS.ByteString -> Integer
+nonNegativeByteStringLE = wordsToNonNegativeLE . BS.unpack
 
-integerByteStringBE :: BS.ByteString -> Integer
-integerByteStringBE = wordsToIntegerLE . reverse . BS.unpack
+nonNegativeByteStringBE :: BS.ByteString -> Integer
+nonNegativeByteStringBE = wordsToNonNegativeLE . reverse . BS.unpack
 
-wordsToIntegerLE :: (Integral a, Bits a) => [a] -> Integer
-wordsToIntegerLE = foldr f 0
+wordsToNonNegativeLE :: (Integral a, Bits a) => [a] -> Integer
+wordsToNonNegativeLE = foldr f 0
  where
    f w n =  (toInteger w) .|. shiftL n (bitSize w)
 
