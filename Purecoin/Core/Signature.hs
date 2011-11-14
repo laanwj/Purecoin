@@ -11,7 +11,7 @@ import Purecoin.Core.Serialize ( Serialize, runPut
                                , get, getWord8
                                , put, putWord8, putWord32le
                                )
-import Purecoin.Crypto.EcDsaSecp256k1
+import Purecoin.Crypto.EcDsaSecp256k1 (Signature)
 
 data HashKind = SIGHASH_ALL
               | SIGHASH_NONE
