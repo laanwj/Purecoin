@@ -105,14 +105,11 @@ instance Serialize Fn where
            len <- getWord8
            guard (0 < len && len <= 0x7f)
            l <- getBytes (fromIntegral len)
-           guard (bitscheck (unpack l))
+           {- Here openssl deviates from the DER specfication and treat all inputs as unsigned integers
+              We have to follow this deviation in bitcoin since bitcoin is defined in terms of openssl. -}
            let i = nonNegativeByteStringBE l
            guard (i < n)
            return (Fn i)
-   where
-     bitscheck [] = False
-     bitscheck [_] = True
-     bitscheck (x:y:_) = (x <= 0x7f) && ((x == 0) <= (0x7f < y))
   put (Fn a) | len <= 0x7f = putWord8 0x02 >> putWord8 (fromIntegral len)
                           >> putByteString (pack l)
              | otherwise = error "Serialize Fn value too large"
