@@ -103,6 +103,7 @@ instance Fractional Fn where
 instance Serialize Fn where
   get = do 0x02 <- getWord8
            len <- getWord8
+           -- TODO: double check this guard is right
            guard (0 < len && len <= 0x7f)
            l <- getBytes (fromIntegral len)
            {- Here openssl deviates from the DER specfication and treat all inputs as unsigned integers
