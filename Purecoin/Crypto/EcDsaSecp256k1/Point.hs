@@ -231,10 +231,10 @@ instance Serialize Point where
      where
       sameSign (Fp a) = even w == even a
 
-  put p = fromMaybe (put (0 :: Word8)) (do { x <- getx p; y <- gety p; return (put (4 :: Word8) >> put x >> put y)})
+  put = putUncompressed
 
 putUncompressed :: Point -> Put
-putUncompressed = put
+putUncompressed p = fromMaybe (put (0 :: Word8)) (do { x <- getx p; y <- gety p; return (put (4 :: Word8) >> put x >> put y)})
 
 putCompressed :: Point -> Put
 putCompressed p = fromMaybe (put (0 :: Word8)) (do { x <- getx p; y <- gety p; return (put (prefix y) >> put x)})
