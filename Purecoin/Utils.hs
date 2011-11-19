@@ -1,10 +1,10 @@
 module Purecoin.Utils ( showHexByteStringBE, showHexByteStringLE
-                      , nonNegativeByteStringBE, nonNegativeByteStringLE
-                      , integerToNByteStringLE, integerToNByteStringBE
+                      , integerByteStringLE, nonNegativeByteStringBE, nonNegativeByteStringLE
+                      , integerToByteStringLE, integerToNByteStringLE, integerToNByteStringBE
                       ) where
 
 import Data.Word (Word8)
-import Data.Bits (Bits, shiftR, shiftL, (.|.), (.&.), bitSize)
+import Data.Bits (Bits, shiftR, shiftL, (.|.), (.&.), xor, bitSize, testBit)
 import Data.Char (intToDigit)
 import qualified Data.ByteString as BS
 
@@ -19,6 +19,14 @@ showOctet w = [wordToDigit (shiftR w 4), wordToDigit (0x0f .&. w)]
  where
    wordToDigit = intToDigit . fromIntegral
 
+integerByteStringLE :: BS.ByteString -> Integer
+integerByteStringLE bs = if sgn then negate n else n
+ where
+   (sgn,n) = go (BS.unpack bs)
+   go [] = (False, 0)
+   go [w] = (testBit w 7, toInteger (0x7f .&. w))
+   go (w:ws) = let (sgn0, n0) = go ws in (sgn0, (toInteger w) .|. shiftL n0 (bitSize w))
+
 nonNegativeByteStringLE :: BS.ByteString -> Integer
 nonNegativeByteStringLE = wordsToNonNegativeLE . BS.unpack
 
@@ -29,6 +37,14 @@ wordsToNonNegativeLE :: (Integral a, Bits a) => [a] -> Integer
 wordsToNonNegativeLE = foldr f 0
  where
    f w n =  (toInteger w) .|. shiftL n (bitSize w)
+
+integerToByteStringLE :: Integer -> BS.ByteString
+integerToByteStringLE n = BS.pack $ go (if 0 <= n then 0x00 else 0x80) (abs n)
+ where
+  go sgn n | 0xff < n  = fromInteger n : go sgn (n `shiftR` 8)
+           | 0x7f < n  = [fromInteger n, sgn]
+           | 0x00 < n  = [(fromInteger n) `xor` sgn]
+           | otherwise = []
 
 -- produces a ByteString of length n
 integerToNByteStringLE :: Int -> Integer -> BS.ByteString
