@@ -79,7 +79,7 @@ module Purecoin.Core.Script
            , OP_NOP6, OP_NOP7, OP_NOP8, OP_NOP9, OP_NOP10
            ), opPushData, opView
        , Script, scriptOps, opsScript, nullScript
-       , MakeHash, ScriptMonad, doScripts, execScriptMonad
+       , MakeHash, ScriptMonad, doScript, execScriptMonad
        ) where
 
 import Prelude hiding (length)
@@ -188,6 +188,7 @@ data OP = OP_PUSHDATA !WS.Word8s  -- length must be less than 76
         | OP_SHA256
         | OP_HASH160
         | OP_HASH256
+        | OP_CODESEPARATOR
         | OP_CHECKSIG
         | OP_CHECKSIGVERIFY
         | OP_CHECKMULTISIG
@@ -196,234 +197,231 @@ data OP = OP_PUSHDATA !WS.Word8s  -- length must be less than 76
         | OP_NOP6 | OP_NOP7 | OP_NOP8 | OP_NOP9 | OP_NOP10
         deriving (Eq, Show)
 
-data OPSep = OP OP
-           | OP_CODESEPARATOR
-
-getOpSep :: Get OPSep
-getOpSep = code =<< getWord8
+getOp :: Get OP
+getOp = code =<< getWord8
  where
   -- TODO: make WS.getBytes
-  code x | x <= 75 = getBytes (fromIntegral x) >>= return . OP . OP_PUSHDATA . WS.fromByteString
+  code x | x <= 75 = getBytes (fromIntegral x) >>= return . OP_PUSHDATA . WS.fromByteString
   code 76 = do l <- getWord8
                d <- getBytes (fromIntegral l)
-               return . OP . OP_PUSHDATA1 . WS.fromByteString $ d
+               return . OP_PUSHDATA1 . WS.fromByteString $ d
   code 77 = do l <- getWord16be
                d <- getBytes (fromIntegral l)
-               return . OP . OP_PUSHDATA2 . WS.fromByteString $ d
+               return . OP_PUSHDATA2 . WS.fromByteString $ d
   code 78 = do l <- getWord32be
                d <- getBytes (fromIntegral l)
-               return . OP . OP_PUSHDATA4 . WS.fromByteString $ d
-  code 81 = return $ OP OP_1
-  code 82 = return $ OP OP_2
-  code 83 = return $ OP OP_3
-  code 84 = return $ OP OP_4
-  code 85 = return $ OP OP_5
-  code 86 = return $ OP OP_6
-  code 87 = return $ OP OP_7
-  code 88 = return $ OP OP_8
-  code 89 = return $ OP OP_9
-  code 90 = return $ OP OP_10
-  code 91 = return $ OP OP_11
-  code 92 = return $ OP OP_12
-  code 93 = return $ OP OP_13
-  code 94 = return $ OP OP_14
-  code 95 = return $ OP OP_15
-  code 96 = return $ OP OP_16
-  code 97 = return $ OP OP_NOP
-  code 99 = return $ OP OP_IF
-  code 100 = return $ OP OP_NOTIF
-  code 103 = return $ OP OP_ELSE
-  code 104 = return $ OP OP_ENDIF
-  code 105 = return $ OP OP_VERIFY
-  code 106 = return $ OP OP_RETURN
-  code 107 = return $ OP OP_TOALTSTACK
-  code 108 = return $ OP OP_FROMALTSTACK
-  code 115 = return $ OP OP_IFDUP
-  code 116 = return $ OP OP_DEPTH
-  code 117 = return $ OP OP_DROP
-  code 118 = return $ OP OP_DUP
-  code 119 = return $ OP OP_NIP
-  code 120 = return $ OP OP_OVER
-  code 121 = return $ OP OP_PICK
-  code 122 = return $ OP OP_ROLL
-  code 123 = return $ OP OP_ROT
-  code 124 = return $ OP OP_SWAP
-  code 125 = return $ OP OP_TUCK
-  code 109 = return $ OP OP_2DROP
-  code 110 = return $ OP OP_2DUP
-  code 111 = return $ OP OP_3DUP
-  code 112 = return $ OP OP_2OVER
-  code 113 = return $ OP OP_2ROT
-  code 114 = return $ OP OP_2SWAP
-  code 126 = return $ OP OP_CAT
-  code 127 = return $ OP OP_SUBSTR
-  code 128 = return $ OP OP_LEFT
-  code 129 = return $ OP OP_RIGHT
-  code 130 = return $ OP OP_SIZE
-  code 131 = return $ OP OP_INVERT
-  code 132 = return $ OP OP_AND
-  code 133 = return $ OP OP_OR
-  code 134 = return $ OP OP_XOR
-  code 135 = return $ OP OP_EQUAL
-  code 136 = return $ OP OP_EQUALVERIFY
-  code 139 = return $ OP OP_1ADD
-  code 140 = return $ OP OP_1SUB
-  code 141 = return $ OP OP_2MUL
-  code 142 = return $ OP OP_2DIV
-  code 143 = return $ OP OP_NEGATE
-  code 144 = return $ OP OP_ABS
-  code 145 = return $ OP OP_NOT
-  code 146 = return $ OP OP_0NOTEQUAL
-  code 147 = return $ OP OP_ADD
-  code 148 = return $ OP OP_SUB
-  code 149 = return $ OP OP_MUL
-  code 150 = return $ OP OP_DIV
-  code 151 = return $ OP OP_MOD
-  code 152 = return $ OP OP_LSHIFT
-  code 153 = return $ OP OP_RSHIFT
-  code 154 = return $ OP OP_BOOLAND
-  code 155 = return $ OP OP_BOOLOR
-  code 156 = return $ OP OP_NUMEQUAL
-  code 157 = return $ OP OP_NUMEQUALVERIFY
-  code 158 = return $ OP OP_NUMNOTEQUAL
-  code 159 = return $ OP OP_LESSTHAN
-  code 160 = return $ OP OP_GREATERTHAN
-  code 161 = return $ OP OP_LESSTHANOREQUAL
-  code 162 = return $ OP OP_GREATERTHANOREQUAL
-  code 163 = return $ OP OP_MIN
-  code 164 = return $ OP OP_MAX
-  code 165 = return $ OP OP_WITHIN
-  code 166 = return $ OP OP_RIPEMD160
-  code 167 = return $ OP OP_SHA1
-  code 168 = return $ OP OP_SHA256
-  code 169 = return $ OP OP_HASH160
-  code 170 = return $ OP OP_HASH256
+               return . OP_PUSHDATA4 . WS.fromByteString $ d
+  code 81 = return OP_1
+  code 82 = return OP_2
+  code 83 = return OP_3
+  code 84 = return OP_4
+  code 85 = return OP_5
+  code 86 = return OP_6
+  code 87 = return OP_7
+  code 88 = return OP_8
+  code 89 = return OP_9
+  code 90 = return OP_10
+  code 91 = return OP_11
+  code 92 = return OP_12
+  code 93 = return OP_13
+  code 94 = return OP_14
+  code 95 = return OP_15
+  code 96 = return OP_16
+  code 97 = return OP_NOP
+  code 99 = return OP_IF
+  code 100 = return OP_NOTIF
+  code 103 = return OP_ELSE
+  code 104 = return OP_ENDIF
+  code 105 = return OP_VERIFY
+  code 106 = return OP_RETURN
+  code 107 = return OP_TOALTSTACK
+  code 108 = return OP_FROMALTSTACK
+  code 115 = return OP_IFDUP
+  code 116 = return OP_DEPTH
+  code 117 = return OP_DROP
+  code 118 = return OP_DUP
+  code 119 = return OP_NIP
+  code 120 = return OP_OVER
+  code 121 = return OP_PICK
+  code 122 = return OP_ROLL
+  code 123 = return OP_ROT
+  code 124 = return OP_SWAP
+  code 125 = return OP_TUCK
+  code 109 = return OP_2DROP
+  code 110 = return OP_2DUP
+  code 111 = return OP_3DUP
+  code 112 = return OP_2OVER
+  code 113 = return OP_2ROT
+  code 114 = return OP_2SWAP
+  code 126 = return OP_CAT
+  code 127 = return OP_SUBSTR
+  code 128 = return OP_LEFT
+  code 129 = return OP_RIGHT
+  code 130 = return OP_SIZE
+  code 131 = return OP_INVERT
+  code 132 = return OP_AND
+  code 133 = return OP_OR
+  code 134 = return OP_XOR
+  code 135 = return OP_EQUAL
+  code 136 = return OP_EQUALVERIFY
+  code 139 = return OP_1ADD
+  code 140 = return OP_1SUB
+  code 141 = return OP_2MUL
+  code 142 = return OP_2DIV
+  code 143 = return OP_NEGATE
+  code 144 = return OP_ABS
+  code 145 = return OP_NOT
+  code 146 = return OP_0NOTEQUAL
+  code 147 = return OP_ADD
+  code 148 = return OP_SUB
+  code 149 = return OP_MUL
+  code 150 = return OP_DIV
+  code 151 = return OP_MOD
+  code 152 = return OP_LSHIFT
+  code 153 = return OP_RSHIFT
+  code 154 = return OP_BOOLAND
+  code 155 = return OP_BOOLOR
+  code 156 = return OP_NUMEQUAL
+  code 157 = return OP_NUMEQUALVERIFY
+  code 158 = return OP_NUMNOTEQUAL
+  code 159 = return OP_LESSTHAN
+  code 160 = return OP_GREATERTHAN
+  code 161 = return OP_LESSTHANOREQUAL
+  code 162 = return OP_GREATERTHANOREQUAL
+  code 163 = return OP_MIN
+  code 164 = return OP_MAX
+  code 165 = return OP_WITHIN
+  code 166 = return OP_RIPEMD160
+  code 167 = return OP_SHA1
+  code 168 = return OP_SHA256
+  code 169 = return OP_HASH160
+  code 170 = return OP_HASH256
   code 171 = return OP_CODESEPARATOR
-  code 172 = return $ OP OP_CHECKSIG
-  code 173 = return $ OP OP_CHECKSIGVERIFY
-  code 174 = return $ OP OP_CHECKMULTISIG
-  code 175 = return $ OP OP_CHECKMULTISIGVERIFY
-  code 176 = return $ OP OP_NOP1
-  code 177 = return $ OP OP_NOP2
-  code 178 = return $ OP OP_NOP3
-  code 179 = return $ OP OP_NOP4
-  code 180 = return $ OP OP_NOP5
-  code 181 = return $ OP OP_NOP6
-  code 182 = return $ OP OP_NOP7
-  code 183 = return $ OP OP_NOP8
-  code 184 = return $ OP OP_NOP9
-  code 185 = return $ OP OP_NOP10
+  code 172 = return OP_CHECKSIG
+  code 173 = return OP_CHECKSIGVERIFY
+  code 174 = return OP_CHECKMULTISIG
+  code 175 = return OP_CHECKMULTISIGVERIFY
+  code 176 = return OP_NOP1
+  code 177 = return OP_NOP2
+  code 178 = return OP_NOP3
+  code 179 = return OP_NOP4
+  code 180 = return OP_NOP5
+  code 181 = return OP_NOP6
+  code 182 = return OP_NOP7
+  code 183 = return OP_NOP8
+  code 184 = return OP_NOP9
+  code 185 = return OP_NOP10
   code x = fail $ "Unknown OP code: " ++ show x
 
-putOpSep :: OPSep -> Put
-putOpSep (OP (OP_PUSHDATA x))  | WS.length x <= 75 =
+putOp :: OP -> Put
+putOp (OP_PUSHDATA x)  | WS.length x <= 75 =
     putWord8 (fromIntegral $ WS.length x) >> putByteString (WS.toByteString x)
-putOpSep (OP (OP_PUSHDATA1 x)) | WS.length x < 2^8 =
+putOp (OP_PUSHDATA1 x) | WS.length x < 2^8 =
     putWord8 76 >> putWord8 (fromIntegral $ WS.length x) >> putByteString (WS.toByteString x)
-putOpSep (OP (OP_PUSHDATA2 x)) | WS.length x < 2^16 =
+putOp (OP_PUSHDATA2 x) | WS.length x < 2^16 =
     putWord8 77 >> putWord16be (fromIntegral $ WS.length x) >> putByteString (WS.toByteString x)
-putOpSep (OP (OP_PUSHDATA4 x)) | WS.length x < 2^32 =
+putOp (OP_PUSHDATA4 x) | WS.length x < 2^32 =
     putWord8 78 >> putWord32be (fromIntegral $ WS.length x) >> putByteString (WS.toByteString x)
-putOpSep (OP (OP_1)) = putWord8 81
-putOpSep (OP (OP_2)) = putWord8 82
-putOpSep (OP (OP_3)) = putWord8 83
-putOpSep (OP (OP_4)) = putWord8 84
-putOpSep (OP (OP_5)) = putWord8 85
-putOpSep (OP (OP_6)) = putWord8 86
-putOpSep (OP (OP_7)) = putWord8 87
-putOpSep (OP (OP_8)) = putWord8 88
-putOpSep (OP (OP_9)) = putWord8 89
-putOpSep (OP (OP_10)) = putWord8 90
-putOpSep (OP (OP_11)) = putWord8 91
-putOpSep (OP (OP_12)) = putWord8 92
-putOpSep (OP (OP_13)) = putWord8 93
-putOpSep (OP (OP_14)) = putWord8 94
-putOpSep (OP (OP_15)) = putWord8 95
-putOpSep (OP (OP_16)) = putWord8 96
-putOpSep (OP (OP_NOP)) = putWord8 97
-putOpSep (OP (OP_IF)) = putWord8 99
-putOpSep (OP (OP_NOTIF)) = putWord8 100
-putOpSep (OP (OP_ELSE)) = putWord8 103
-putOpSep (OP (OP_ENDIF)) = putWord8 104
-putOpSep (OP (OP_VERIFY)) = putWord8 105
-putOpSep (OP (OP_RETURN)) = putWord8 106
-putOpSep (OP (OP_TOALTSTACK)) = putWord8 107
-putOpSep (OP (OP_FROMALTSTACK)) = putWord8 108
-putOpSep (OP (OP_IFDUP)) = putWord8 115
-putOpSep (OP (OP_DEPTH)) = putWord8 116
-putOpSep (OP (OP_DROP)) = putWord8 117
-putOpSep (OP (OP_DUP)) = putWord8 118
-putOpSep (OP (OP_NIP)) = putWord8 119
-putOpSep (OP (OP_OVER)) = putWord8 120
-putOpSep (OP (OP_PICK)) = putWord8 121
-putOpSep (OP (OP_ROLL)) = putWord8 122
-putOpSep (OP (OP_ROT)) = putWord8 123
-putOpSep (OP (OP_SWAP)) = putWord8 124
-putOpSep (OP (OP_TUCK)) = putWord8 125
-putOpSep (OP (OP_2DROP)) = putWord8 109
-putOpSep (OP (OP_2DUP)) = putWord8 110
-putOpSep (OP (OP_3DUP)) = putWord8 111
-putOpSep (OP (OP_2OVER)) = putWord8 112
-putOpSep (OP (OP_2ROT)) = putWord8 113
-putOpSep (OP (OP_2SWAP)) = putWord8 114
-putOpSep (OP (OP_CAT)) = putWord8 126
-putOpSep (OP (OP_SUBSTR)) = putWord8 127
-putOpSep (OP (OP_LEFT)) = putWord8 128
-putOpSep (OP (OP_RIGHT)) = putWord8 129
-putOpSep (OP (OP_SIZE)) = putWord8 130
-putOpSep (OP (OP_INVERT)) = putWord8 131
-putOpSep (OP (OP_AND)) = putWord8 132
-putOpSep (OP (OP_OR)) = putWord8 133
-putOpSep (OP (OP_XOR)) = putWord8 134
-putOpSep (OP (OP_EQUAL)) = putWord8 135
-putOpSep (OP (OP_EQUALVERIFY)) = putWord8 136
-putOpSep (OP (OP_1ADD)) = putWord8 139
-putOpSep (OP (OP_1SUB)) = putWord8 140
-putOpSep (OP (OP_2MUL)) = putWord8 141
-putOpSep (OP (OP_2DIV)) = putWord8 142
-putOpSep (OP (OP_NEGATE)) = putWord8 143
-putOpSep (OP (OP_ABS)) = putWord8 144
-putOpSep (OP (OP_NOT)) = putWord8 145
-putOpSep (OP (OP_0NOTEQUAL)) = putWord8 146
-putOpSep (OP (OP_ADD)) = putWord8 147
-putOpSep (OP (OP_SUB)) = putWord8 148
-putOpSep (OP (OP_MUL)) = putWord8 149
-putOpSep (OP (OP_DIV)) = putWord8 150
-putOpSep (OP (OP_MOD)) = putWord8 151
-putOpSep (OP (OP_LSHIFT)) = putWord8 152
-putOpSep (OP (OP_RSHIFT)) = putWord8 153
-putOpSep (OP (OP_BOOLAND)) = putWord8 154
-putOpSep (OP (OP_BOOLOR)) = putWord8 155
-putOpSep (OP (OP_NUMEQUAL)) = putWord8 156
-putOpSep (OP (OP_NUMEQUALVERIFY)) = putWord8 157
-putOpSep (OP (OP_NUMNOTEQUAL)) = putWord8 158
-putOpSep (OP (OP_LESSTHAN)) = putWord8 159
-putOpSep (OP (OP_GREATERTHAN)) = putWord8 160
-putOpSep (OP (OP_LESSTHANOREQUAL)) = putWord8 161
-putOpSep (OP (OP_GREATERTHANOREQUAL)) = putWord8 162
-putOpSep (OP (OP_MIN)) = putWord8 163
-putOpSep (OP (OP_MAX)) = putWord8 164
-putOpSep (OP (OP_WITHIN)) = putWord8 165
-putOpSep (OP (OP_RIPEMD160)) = putWord8 166
-putOpSep (OP (OP_SHA1)) = putWord8 167
-putOpSep (OP (OP_SHA256)) = putWord8 168
-putOpSep (OP (OP_HASH160)) = putWord8 169
-putOpSep (OP (OP_HASH256)) = putWord8 170
-putOpSep OP_CODESEPARATOR = putWord8 171
-putOpSep (OP (OP_CHECKSIG)) = putWord8 172
-putOpSep (OP (OP_CHECKSIGVERIFY)) = putWord8 173
-putOpSep (OP (OP_CHECKMULTISIG)) = putWord8 174
-putOpSep (OP (OP_CHECKMULTISIGVERIFY)) = putWord8 175
-putOpSep (OP (OP_NOP1)) = putWord8 176
-putOpSep (OP (OP_NOP2)) = putWord8 177
-putOpSep (OP (OP_NOP3)) = putWord8 178
-putOpSep (OP (OP_NOP4)) = putWord8 179
-putOpSep (OP (OP_NOP5)) = putWord8 180
-putOpSep (OP (OP_NOP6)) = putWord8 181
-putOpSep (OP (OP_NOP7)) = putWord8 182
-putOpSep (OP (OP_NOP8)) = putWord8 183
-putOpSep (OP (OP_NOP9)) = putWord8 184
-putOpSep (OP (OP_NOP10)) = putWord8 185
+putOp OP_1 = putWord8 81
+putOp OP_2 = putWord8 82
+putOp OP_3 = putWord8 83
+putOp OP_4 = putWord8 84
+putOp OP_5 = putWord8 85
+putOp OP_6 = putWord8 86
+putOp OP_7 = putWord8 87
+putOp OP_8 = putWord8 88
+putOp OP_9 = putWord8 89
+putOp OP_10 = putWord8 90
+putOp OP_11 = putWord8 91
+putOp OP_12 = putWord8 92
+putOp OP_13 = putWord8 93
+putOp OP_14 = putWord8 94
+putOp OP_15 = putWord8 95
+putOp OP_16 = putWord8 96
+putOp OP_NOP = putWord8 97
+putOp OP_IF = putWord8 99
+putOp OP_NOTIF = putWord8 100
+putOp OP_ELSE = putWord8 103
+putOp OP_ENDIF = putWord8 104
+putOp OP_VERIFY = putWord8 105
+putOp OP_RETURN = putWord8 106
+putOp OP_TOALTSTACK = putWord8 107
+putOp OP_FROMALTSTACK = putWord8 108
+putOp OP_IFDUP = putWord8 115
+putOp OP_DEPTH = putWord8 116
+putOp OP_DROP = putWord8 117
+putOp OP_DUP = putWord8 118
+putOp OP_NIP = putWord8 119
+putOp OP_OVER = putWord8 120
+putOp OP_PICK = putWord8 121
+putOp OP_ROLL = putWord8 122
+putOp OP_ROT = putWord8 123
+putOp OP_SWAP = putWord8 124
+putOp OP_TUCK = putWord8 125
+putOp OP_2DROP = putWord8 109
+putOp OP_2DUP = putWord8 110
+putOp OP_3DUP = putWord8 111
+putOp OP_2OVER = putWord8 112
+putOp OP_2ROT = putWord8 113
+putOp OP_2SWAP = putWord8 114
+putOp OP_CAT = putWord8 126
+putOp OP_SUBSTR = putWord8 127
+putOp OP_LEFT = putWord8 128
+putOp OP_RIGHT = putWord8 129
+putOp OP_SIZE = putWord8 130
+putOp OP_INVERT = putWord8 131
+putOp OP_AND = putWord8 132
+putOp OP_OR = putWord8 133
+putOp OP_XOR = putWord8 134
+putOp OP_EQUAL = putWord8 135
+putOp OP_EQUALVERIFY = putWord8 136
+putOp OP_1ADD = putWord8 139
+putOp OP_1SUB = putWord8 140
+putOp OP_2MUL = putWord8 141
+putOp OP_2DIV = putWord8 142
+putOp OP_NEGATE = putWord8 143
+putOp OP_ABS = putWord8 144
+putOp OP_NOT = putWord8 145
+putOp OP_0NOTEQUAL = putWord8 146
+putOp OP_ADD = putWord8 147
+putOp OP_SUB = putWord8 148
+putOp OP_MUL = putWord8 149
+putOp OP_DIV = putWord8 150
+putOp OP_MOD = putWord8 151
+putOp OP_LSHIFT = putWord8 152
+putOp OP_RSHIFT = putWord8 153
+putOp OP_BOOLAND = putWord8 154
+putOp OP_BOOLOR = putWord8 155
+putOp OP_NUMEQUAL = putWord8 156
+putOp OP_NUMEQUALVERIFY = putWord8 157
+putOp OP_NUMNOTEQUAL = putWord8 158
+putOp OP_LESSTHAN = putWord8 159
+putOp OP_GREATERTHAN = putWord8 160
+putOp OP_LESSTHANOREQUAL = putWord8 161
+putOp OP_GREATERTHANOREQUAL = putWord8 162
+putOp OP_MIN = putWord8 163
+putOp OP_MAX = putWord8 164
+putOp OP_WITHIN = putWord8 165
+putOp OP_RIPEMD160 = putWord8 166
+putOp OP_SHA1 = putWord8 167
+putOp OP_SHA256 = putWord8 168
+putOp OP_HASH160 = putWord8 169
+putOp OP_HASH256 = putWord8 170
+putOp OP_CODESEPARATOR = putWord8 171
+putOp OP_CHECKSIG = putWord8 172
+putOp OP_CHECKSIGVERIFY = putWord8 173
+putOp OP_CHECKMULTISIG = putWord8 174
+putOp OP_CHECKMULTISIGVERIFY = putWord8 175
+putOp OP_NOP1 = putWord8 176
+putOp OP_NOP2 = putWord8 177
+putOp OP_NOP3 = putWord8 178
+putOp OP_NOP4 = putWord8 179
+putOp OP_NOP5 = putWord8 180
+putOp OP_NOP6 = putWord8 181
+putOp OP_NOP7 = putWord8 182
+putOp OP_NOP8 = putWord8 183
+putOp OP_NOP9 = putWord8 184
+putOp OP_NOP10 = putWord8 185
 
 opPushData :: WS.Word8s -> OP
 opPushData ws | len <= 75  = OP_PUSHDATA ws
@@ -449,36 +447,31 @@ instance Serialize Script where
 
   put (Script ws) = putVarByteString . WS.toByteString $ ws
 
-scriptOps :: Script -> Either String (NEList [OP])
+scriptOps :: Script -> Either String [OP]
 scriptOps (Script ws) = runGet getOps . WS.toByteString $ ws
  where
   getOps = do empty <- isEmpty
-              if empty then return $ (NENil [])
-                       else push <$> getOpSep <*> getOps
-  push OP_CODESEPARATOR  s     = NECons [] s
-  -- TODO: use an headLens
-  push (OP o)            (NENil h) = NENil (o:h)
-  push (OP o)            (NECons h t) = NECons (o:h) t
+              if empty then return []
+                       else (:) <$> getOp <*> getOps
 
-
-opsScript :: NEList [OP] -> Script
-opsScript s = Script . WS.fromByteString . runPut . mapM_ putOpSep . intercalate [OP_CODESEPARATOR] $ map (map OP) (toList s)
+opsScript :: [OP] -> Script
+opsScript = Script . WS.fromByteString . runPut . mapM_ putOp
 
 nullScript :: Script
-nullScript = Script . WS.fromList $ []
+nullScript = opsScript []
 
 asBool :: ByteString -> Bool
 asBool bs = integerByteStringLE bs /= 0
 
 {- notes: OP_CHECKSIG pushes false rather than failing if decoding of the signature or the public key fails
-          the alternate stack is cleared between invocations of doScript
+          the alternate stack is cleared between invocations of runScript
           integers are little endian with a sign bit as the leading bit (this is NOT two's complement)
           False is equiavlent to any encoding of zero, including any encoding of negative zero
           success means that the top of the stack is non-zero (see previous line)
-          All if statements are terminated between invocations of doScript
+          All if statements are terminated between invocations of runScript
 -}
-doScript :: (CoinSignature -> Integer) -> [OP] -> MS.StateT ([ByteString],[ByteString]) Maybe ()
-doScript mkHash = mapM_ go
+runScript :: MakeHash -> [OP] -> MS.StateT ([ByteString],[ByteString]) Maybe ()
+runScript mkHash script = mapM_ go script
  where
   getMain = do {(main,_) <- MS.get; return main}
   putMain x = do MS.modify $ \(_,alt) -> (x,alt)
@@ -493,7 +486,7 @@ doScript mkHash = mapM_ go
   checkSig pubkeycode sigcode = either (const False) (const True)
                               $ do pubkey <- decode pubkeycode
                                    sig <- decode sigcode
-                                   let check = verifySignature pubkey (mkHash sig) (csSig sig)
+                                   let check = verifySignature pubkey (mkHash script sig) (csSig sig)
                                    guard check
   checkMultiSig _ [] = True
   checkMultiSig [] _ = False
@@ -640,7 +633,7 @@ reverseReplicateM n cmd = go n []
    go m l | 0 < m = do { i <- cmd; go (m-1) (i:l) }
           | otherwise = fail "reverseReplicateM given negative number"
 
-type MakeHash = [[OP]] -> CoinSignature -> Integer
+type MakeHash = [OP] -> CoinSignature -> Integer
 
 newtype ScriptMonad a = ScriptMonad (MR.ReaderT MakeHash (MS.StateT ([ByteString]) Maybe) a)
 
@@ -656,10 +649,10 @@ instance Monad ScriptMonad where
   fail = ScriptMonad . fail
   ScriptMonad x >>= f = ScriptMonad $ (x >>= \x' -> let ScriptMonad y' = f x' in y')
 
-doScripts :: [[OP]] -> ScriptMonad ()
-doScripts script = ScriptMonad . MR.ReaderT $ go
+doScript :: [OP] -> ScriptMonad ()
+doScript script = ScriptMonad . MR.ReaderT $ go
  where
-  go mkHash = MS.StateT (\inStack -> proj <$> MS.runStateT (sequence_ $ zipWith doScript (map mkHash . tails $ script) script) (inStack,[]))
+  go mkHash = MS.StateT (\inStack -> proj <$> MS.runStateT (runScript mkHash script) (inStack,[]))
    where
     proj (a, (outStack,_)) = (a, outStack)
 

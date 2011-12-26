@@ -12,7 +12,7 @@ import Data.NEList (NEList(..), (<|), appendNE, toList)
 import Data.ByteString (append)
 import Purecoin.Utils (nonNegativeByteStringBE)
 import Purecoin.Core.Serialize (encode)
-import Purecoin.Core.Script (MakeHash, scriptOps, opsScript, doScripts, execScriptMonad)
+import Purecoin.Core.Script (MakeHash, scriptOps, opsScript, doScript, execScriptMonad)
 import Purecoin.Core.Hash (Hash, hash, hashBS)
 import Purecoin.Core.DataTypes ( TxInput(..)
                                , GeneralizedTx(..), Tx
@@ -70,8 +70,8 @@ addTransaction tx =
      ptxo <- removeCoin . txiPreviousOutput $ txi
      opsSig <- either fail return $ scriptOps (txiScript txi)
      opsCheck <- either fail return $ scriptOps (txoScript ptxo)
-     maybe (fail errMsg) return . execScriptMonad mkHash $ doScripts (toList opsSig)
-                                                        >> doScripts (toList opsCheck)
+     maybe (fail errMsg) return . execScriptMonad mkHash $ doScript (toList opsSig)
+                                                        >> doScript (toList opsCheck)
      return (txoValue ptxo)
     where
      errMsg = "Script for "++show (txiPreviousOutput txi)++" in transaction "++show txHash++" failed"
@@ -90,7 +90,7 @@ getTxInputs :: Tx -> [(TxInput, MakeHash)]
 getTxInputs tx = map result . selections . toList . txIn $ tx
   where
    result (l, m, r) = (m, makeHash l m r)
-   setScript s txi = txi{txiScript = opsScript (NENil s)}
+   setScript s txi = txi{txiScript = opsScript s}
    makeHash l m r script sig = fromMaybe 1 $ do
      ntx <- newTx
      return . nonNegativeByteStringBE . encode . hashBS $ encode ntx `append` csHashType sig
@@ -105,7 +105,7 @@ getTxInputs tx = map result . selections . toList . txIn $ tx
             | otherwise          = l' `appendNE` (m' <| r')
        where
         l' = map clear l
-        m' = setScript (concat script) m
+        m' = setScript script m
         r' = map clear r
       clear = clearSequence (csHashKind sig) . setScript []
       clearSequence SIGHASH_ALL txi = txi
