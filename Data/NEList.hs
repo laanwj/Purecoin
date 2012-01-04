@@ -10,6 +10,7 @@ import qualified Data.Foldable as F
 
 data NEList a = NENil a
               | NECons a (NEList a)
+              deriving Eq
 
 instance Functor NEList where
   fmap f (NENil a) = NENil (f a)

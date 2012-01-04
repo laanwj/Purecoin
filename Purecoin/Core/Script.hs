@@ -5,8 +5,6 @@ module Purecoin.Core.Script
            , OP_NOP
            , OP_IF
            , OP_NOTIF
-           , OP_ELSE
-           , OP_ENDIF
            , OP_VERIFY
            , OP_RETURN
            , OP_TOALTSTACK
@@ -83,8 +81,8 @@ module Purecoin.Core.Script
        ) where
 
 import Prelude hiding (length)
-import Data.List (intercalate, tails, genericLength, genericSplitAt)
-import Data.NEList (NEList(..), toList)
+import Data.List (intersperse, intercalate, tails, genericLength, genericSplitAt)
+import Data.NEList (NEList(..), toList, headTailView, (<|))
 import Control.Applicative (Applicative, pure, (<$>), (<*>))
 import Control.Monad (MonadPlus, guard, when)
 import qualified Control.Monad.Reader as MR
@@ -120,10 +118,8 @@ data OP = OP_PUSHDATA !WS.Word8s  -- length must be less than 76
         | OP_1 | OP_2 | OP_3 | OP_4 | OP_5 | OP_6 | OP_7 | OP_8
         | OP_9 | OP_10 | OP_11 | OP_12 | OP_13 | OP_14 | OP_15 | OP_16
         | OP_NOP
-        | OP_IF
-        | OP_NOTIF
-        | OP_ELSE
-        | OP_ENDIF
+        | OP_IF (NEList [OP])
+        | OP_NOTIF (NEList [OP])
         | OP_VERIFY
         | OP_RETURN
         | OP_TOALTSTACK
@@ -197,121 +193,137 @@ data OP = OP_PUSHDATA !WS.Word8s  -- length must be less than 76
         | OP_NOP6 | OP_NOP7 | OP_NOP8 | OP_NOP9 | OP_NOP10
         deriving (Eq, Show)
 
-getOp :: Get OP
+data IfTerminator = OP_ELSE | OP_ENDIF
+
+getIfBlock :: Get (NEList [OP])
+getIfBlock = go =<< getOp
+ where
+  go (Left OP_ENDIF) = return (NENil [])
+  go (Left OP_ELSE) = do rest <- getIfBlock
+                         return (NECons [] rest)
+  go (Right op) = do (hd,tl) <- headTailView <$> getIfBlock
+                     return ((op:hd) <| tl)
+
+getOp :: Get (Either IfTerminator OP)
 getOp = code =<< getWord8
  where
   -- TODO: make WS.getBytes
-  code x | x <= 75 = getBytes (fromIntegral x) >>= return . OP_PUSHDATA . WS.fromByteString
+  code x | x <= 75 = getBytes (fromIntegral x) >>= return . Right . OP_PUSHDATA . WS.fromByteString
   code 76 = do l <- getWord8
                d <- getBytes (fromIntegral l)
-               return . OP_PUSHDATA1 . WS.fromByteString $ d
+               return . Right . OP_PUSHDATA1 . WS.fromByteString $ d
   code 77 = do l <- getWord16be
                d <- getBytes (fromIntegral l)
-               return . OP_PUSHDATA2 . WS.fromByteString $ d
+               return . Right . OP_PUSHDATA2 . WS.fromByteString $ d
   code 78 = do l <- getWord32be
                d <- getBytes (fromIntegral l)
-               return . OP_PUSHDATA4 . WS.fromByteString $ d
-  code 81 = return OP_1
-  code 82 = return OP_2
-  code 83 = return OP_3
-  code 84 = return OP_4
-  code 85 = return OP_5
-  code 86 = return OP_6
-  code 87 = return OP_7
-  code 88 = return OP_8
-  code 89 = return OP_9
-  code 90 = return OP_10
-  code 91 = return OP_11
-  code 92 = return OP_12
-  code 93 = return OP_13
-  code 94 = return OP_14
-  code 95 = return OP_15
-  code 96 = return OP_16
-  code 97 = return OP_NOP
-  code 99 = return OP_IF
-  code 100 = return OP_NOTIF
-  code 103 = return OP_ELSE
-  code 104 = return OP_ENDIF
-  code 105 = return OP_VERIFY
-  code 106 = return OP_RETURN
-  code 107 = return OP_TOALTSTACK
-  code 108 = return OP_FROMALTSTACK
-  code 115 = return OP_IFDUP
-  code 116 = return OP_DEPTH
-  code 117 = return OP_DROP
-  code 118 = return OP_DUP
-  code 119 = return OP_NIP
-  code 120 = return OP_OVER
-  code 121 = return OP_PICK
-  code 122 = return OP_ROLL
-  code 123 = return OP_ROT
-  code 124 = return OP_SWAP
-  code 125 = return OP_TUCK
-  code 109 = return OP_2DROP
-  code 110 = return OP_2DUP
-  code 111 = return OP_3DUP
-  code 112 = return OP_2OVER
-  code 113 = return OP_2ROT
-  code 114 = return OP_2SWAP
-  code 126 = return OP_CAT
-  code 127 = return OP_SUBSTR
-  code 128 = return OP_LEFT
-  code 129 = return OP_RIGHT
-  code 130 = return OP_SIZE
-  code 131 = return OP_INVERT
-  code 132 = return OP_AND
-  code 133 = return OP_OR
-  code 134 = return OP_XOR
-  code 135 = return OP_EQUAL
-  code 136 = return OP_EQUALVERIFY
-  code 139 = return OP_1ADD
-  code 140 = return OP_1SUB
-  code 141 = return OP_2MUL
-  code 142 = return OP_2DIV
-  code 143 = return OP_NEGATE
-  code 144 = return OP_ABS
-  code 145 = return OP_NOT
-  code 146 = return OP_0NOTEQUAL
-  code 147 = return OP_ADD
-  code 148 = return OP_SUB
-  code 149 = return OP_MUL
-  code 150 = return OP_DIV
-  code 151 = return OP_MOD
-  code 152 = return OP_LSHIFT
-  code 153 = return OP_RSHIFT
-  code 154 = return OP_BOOLAND
-  code 155 = return OP_BOOLOR
-  code 156 = return OP_NUMEQUAL
-  code 157 = return OP_NUMEQUALVERIFY
-  code 158 = return OP_NUMNOTEQUAL
-  code 159 = return OP_LESSTHAN
-  code 160 = return OP_GREATERTHAN
-  code 161 = return OP_LESSTHANOREQUAL
-  code 162 = return OP_GREATERTHANOREQUAL
-  code 163 = return OP_MIN
-  code 164 = return OP_MAX
-  code 165 = return OP_WITHIN
-  code 166 = return OP_RIPEMD160
-  code 167 = return OP_SHA1
-  code 168 = return OP_SHA256
-  code 169 = return OP_HASH160
-  code 170 = return OP_HASH256
-  code 171 = return OP_CODESEPARATOR
-  code 172 = return OP_CHECKSIG
-  code 173 = return OP_CHECKSIGVERIFY
-  code 174 = return OP_CHECKMULTISIG
-  code 175 = return OP_CHECKMULTISIGVERIFY
-  code 176 = return OP_NOP1
-  code 177 = return OP_NOP2
-  code 178 = return OP_NOP3
-  code 179 = return OP_NOP4
-  code 180 = return OP_NOP5
-  code 181 = return OP_NOP6
-  code 182 = return OP_NOP7
-  code 183 = return OP_NOP8
-  code 184 = return OP_NOP9
-  code 185 = return OP_NOP10
+               return . Right . OP_PUSHDATA4 . WS.fromByteString $ d
+  code 81 = return (Right OP_1)
+  code 82 = return (Right OP_2)
+  code 83 = return (Right OP_3)
+  code 84 = return (Right OP_4)
+  code 85 = return (Right OP_5)
+  code 86 = return (Right OP_6)
+  code 87 = return (Right OP_7)
+  code 88 = return (Right OP_8)
+  code 89 = return (Right OP_9)
+  code 90 = return (Right OP_10)
+  code 91 = return (Right OP_11)
+  code 92 = return (Right OP_12)
+  code 93 = return (Right OP_13)
+  code 94 = return (Right OP_14)
+  code 95 = return (Right OP_15)
+  code 96 = return (Right OP_16)
+  code 97 = return (Right OP_NOP)
+  code 99 = do ifBlock <- getIfBlock
+               return (Right (OP_IF ifBlock))
+  code 100 = do ifBlock <- getIfBlock
+                return (Right (OP_NOTIF ifBlock))
+  code 103 = return (Left OP_ELSE)
+  code 104 = return (Left OP_ENDIF)
+  code 105 = return (Right OP_VERIFY)
+  code 106 = return (Right OP_RETURN)
+  code 107 = return (Right OP_TOALTSTACK)
+  code 108 = return (Right OP_FROMALTSTACK)
+  code 115 = return (Right OP_IFDUP)
+  code 116 = return (Right OP_DEPTH)
+  code 117 = return (Right OP_DROP)
+  code 118 = return (Right OP_DUP)
+  code 119 = return (Right OP_NIP)
+  code 120 = return (Right OP_OVER)
+  code 121 = return (Right OP_PICK)
+  code 122 = return (Right OP_ROLL)
+  code 123 = return (Right OP_ROT)
+  code 124 = return (Right OP_SWAP)
+  code 125 = return (Right OP_TUCK)
+  code 109 = return (Right OP_2DROP)
+  code 110 = return (Right OP_2DUP)
+  code 111 = return (Right OP_3DUP)
+  code 112 = return (Right OP_2OVER)
+  code 113 = return (Right OP_2ROT)
+  code 114 = return (Right OP_2SWAP)
+  code 126 = return (Right OP_CAT)
+  code 127 = return (Right OP_SUBSTR)
+  code 128 = return (Right OP_LEFT)
+  code 129 = return (Right OP_RIGHT)
+  code 130 = return (Right OP_SIZE)
+  code 131 = return (Right OP_INVERT)
+  code 132 = return (Right OP_AND)
+  code 133 = return (Right OP_OR)
+  code 134 = return (Right OP_XOR)
+  code 135 = return (Right OP_EQUAL)
+  code 136 = return (Right OP_EQUALVERIFY)
+  code 139 = return (Right OP_1ADD)
+  code 140 = return (Right OP_1SUB)
+  code 141 = return (Right OP_2MUL)
+  code 142 = return (Right OP_2DIV)
+  code 143 = return (Right OP_NEGATE)
+  code 144 = return (Right OP_ABS)
+  code 145 = return (Right OP_NOT)
+  code 146 = return (Right OP_0NOTEQUAL)
+  code 147 = return (Right OP_ADD)
+  code 148 = return (Right OP_SUB)
+  code 149 = return (Right OP_MUL)
+  code 150 = return (Right OP_DIV)
+  code 151 = return (Right OP_MOD)
+  code 152 = return (Right OP_LSHIFT)
+  code 153 = return (Right OP_RSHIFT)
+  code 154 = return (Right OP_BOOLAND)
+  code 155 = return (Right OP_BOOLOR)
+  code 156 = return (Right OP_NUMEQUAL)
+  code 157 = return (Right OP_NUMEQUALVERIFY)
+  code 158 = return (Right OP_NUMNOTEQUAL)
+  code 159 = return (Right OP_LESSTHAN)
+  code 160 = return (Right OP_GREATERTHAN)
+  code 161 = return (Right OP_LESSTHANOREQUAL)
+  code 162 = return (Right OP_GREATERTHANOREQUAL)
+  code 163 = return (Right OP_MIN)
+  code 164 = return (Right OP_MAX)
+  code 165 = return (Right OP_WITHIN)
+  code 166 = return (Right OP_RIPEMD160)
+  code 167 = return (Right OP_SHA1)
+  code 168 = return (Right OP_SHA256)
+  code 169 = return (Right OP_HASH160)
+  code 170 = return (Right OP_HASH256)
+  code 171 = return (Right OP_CODESEPARATOR)
+  code 172 = return (Right OP_CHECKSIG)
+  code 173 = return (Right OP_CHECKSIGVERIFY)
+  code 174 = return (Right OP_CHECKMULTISIG)
+  code 175 = return (Right OP_CHECKMULTISIGVERIFY)
+  code 176 = return (Right OP_NOP1)
+  code 177 = return (Right OP_NOP2)
+  code 178 = return (Right OP_NOP3)
+  code 179 = return (Right OP_NOP4)
+  code 180 = return (Right OP_NOP5)
+  code 181 = return (Right OP_NOP6)
+  code 182 = return (Right OP_NOP7)
+  code 183 = return (Right OP_NOP8)
+  code 184 = return (Right OP_NOP9)
+  code 185 = return (Right OP_NOP10)
   code x = fail $ "Unknown OP code: " ++ show x
+
+putIfBlock :: NEList [OP] -> Put
+putIfBlock blk = sequence_ (intersperse (putWord8 103) (map (mapM_ putOp) (toList blk))) >> putWord8 104
 
 putOp :: OP -> Put
 putOp (OP_PUSHDATA x)  | WS.length x <= 75 =
@@ -339,10 +351,8 @@ putOp OP_14 = putWord8 94
 putOp OP_15 = putWord8 95
 putOp OP_16 = putWord8 96
 putOp OP_NOP = putWord8 97
-putOp OP_IF = putWord8 99
-putOp OP_NOTIF = putWord8 100
-putOp OP_ELSE = putWord8 103
-putOp OP_ENDIF = putWord8 104
+putOp (OP_IF ops) = putWord8 99 >> putIfBlock ops
+putOp (OP_NOTIF ops) = putWord8 100 >> putIfBlock ops
 putOp OP_VERIFY = putWord8 105
 putOp OP_RETURN = putWord8 106
 putOp OP_TOALTSTACK = putWord8 107
@@ -452,7 +462,10 @@ scriptOps (Script ws) = runGet getOps . WS.toByteString $ ws
  where
   getOps = do empty <- isEmpty
               if empty then return []
-                       else (:) <$> getOp <*> getOps
+                       else go =<< getOp
+  go (Left OP_ELSE) = fail "scriptOps: Unexpected OP_ELSE"
+  go (Left OP_ENDIF) = fail "scriptOps: Unexpected OP_ENDIF"
+  go (Right op) = (op:) <$> getOps
 
 opsScript :: [OP] -> Script
 opsScript = Script . WS.fromByteString . runPut . mapM_ putOp
@@ -598,6 +611,8 @@ runScript mkHash script = mapM_ go script
                                  _ <- pop -- Due to a bug in the protocol there is an extra pop here.
                                  pushBool (checkMultiSig pubkeycodes sigcodes)
   go OP_CHECKMULTISIGVERIFY = go OP_CHECKMULTISIG >> go OP_VERIFY
+  go (OP_IF blk)            = goIfBlock blk =<< popBool
+  go (OP_NOTIF blk)         = goIfBlock blk =<< not <$> popBool
   go OP_NOP1                = return ()
   go OP_NOP2                = return ()
   go OP_NOP3                = return ()
@@ -623,6 +638,10 @@ runScript mkHash script = mapM_ go script
   go x@OP_MOD               = fail $ "operation" ++ show x ++ " is disabled"
   go x@OP_LSHIFT            = fail $ "operation" ++ show x ++ " is disabled"
   go x@OP_RSHIFT            = fail $ "operation" ++ show x ++ " is disabled"
+  goIfBlock (NENil ops) True = mapM_ go ops
+  goIfBlock (NENil _  ) False = return ()
+  goIfBlock (NECons ops rest) True = mapM_ go ops >> goIfBlock rest False
+  goIfBlock (NECons _   rest) False = goIfBlock rest True
 
 reverseReplicateM :: (MonadPlus m) => Integer -> m a -> m [a]
 -- reverseReplicateM n cmd | 0 <= n = reverse <$> replicateM n cmd
