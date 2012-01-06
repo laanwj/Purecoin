@@ -218,6 +218,7 @@ getOp = code =<< getWord8
   code 78 = do l <- getWord32be
                d <- getBytes (fromIntegral l)
                return . Right . OP_PUSHDATA4 . WS.fromByteString $ d
+  code 79 = return (Right OP_1NEGATE)
   code 81 = return (Right OP_1)
   code 82 = return (Right OP_2)
   code 83 = return (Right OP_3)
@@ -334,6 +335,7 @@ putOp (OP_PUSHDATA2 x) | WS.length x < 2^16 =
     putWord8 77 >> putWord16be (fromIntegral $ WS.length x) >> putByteString (WS.toByteString x)
 putOp (OP_PUSHDATA4 x) | WS.length x < 2^32 =
     putWord8 78 >> putWord32be (fromIntegral $ WS.length x) >> putByteString (WS.toByteString x)
+putOp OP_1NEGATE = putWord8 79
 putOp OP_1 = putWord8 81
 putOp OP_2 = putWord8 82
 putOp OP_3 = putWord8 83
