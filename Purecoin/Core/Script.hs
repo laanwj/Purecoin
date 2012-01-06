@@ -96,7 +96,7 @@ import Purecoin.Core.Serialize
        , isEmpty
        )
 import qualified Purecoin.WordArray as WS
-import Purecoin.Core.Hash (hash160BS)
+import Purecoin.Core.Hash (hashBS, hash160BS, ripemd160BS, sha256BS)
 import Purecoin.Core.Signature (CoinSignature, csSig)
 import Purecoin.Crypto.EcDsaSecp256k1 (verifySignature)
 import Purecoin.Utils (integerByteStringLE, integerToByteStringLE)
@@ -613,6 +613,9 @@ runScript mkHash script = mapM_ go script
   go OP_CHECKMULTISIGVERIFY = go OP_CHECKMULTISIG >> go OP_VERIFY
   go (OP_IF blk)            = goIfBlock blk =<< popBool
   go (OP_NOTIF blk)         = goIfBlock blk =<< not <$> popBool
+  go OP_RIPEMD160           = do {t1 <- pop; push . encode . ripemd160BS $ t1}
+  go OP_SHA256              = do {t1 <- pop; push . encode . sha256BS $ t1}
+  go OP_HASH256             = do {t1 <- pop; push . encode . hashBS $ t1}
   go OP_NOP1                = return ()
   go OP_NOP2                = return ()
   go OP_NOP3                = return ()

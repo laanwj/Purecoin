@@ -1,6 +1,6 @@
 module Purecoin.Core.Hash
        ( Hash, hash0, hashBS, hash, merkleHash
-       , Hash160, hash160BS
+       , Hash160, hash160BS, sha256BS, ripemd160BS
        ) where
 
 import Data.Monoid (mempty, mappend)
@@ -37,9 +37,7 @@ hash0 = Hash mempty
 -- It makes hashing slower and shortens the effectiveness of the hash by close a little less than a bit.
 -- I do not know what is gained by this.
 hashBS :: ByteString -> Hash
-hashBS = Hash . shaRound . encode . shaRound
- where
-   shaRound = sha256 . fromChunks . (:[])
+hashBS = Hash . sha256BS . encode . sha256BS
 
 hash :: (Serialize a) => a -> Hash
 hash = hashBS . encode
@@ -55,8 +53,11 @@ merkleHash l = merkleHash (go l)
   go (NECons x (NENil y)) = NENil (x `merkle` y)
   go (NECons x (NECons y ys)) = NECons (x `merkle` y) (go ys)
 
+sha256BS :: ByteString -> Hash256
+sha256BS = sha256 . fromChunks . (:[])
+
+ripemd160BS :: ByteString -> Hash160
+ripemd160BS = ripemd160 . fromChunks . (:[])
+
 hash160BS :: ByteString -> Hash160
-hash160BS = round2 . encode . round1
- where
-   round1 = sha256 . fromChunks . (:[])
-   round2 = ripemd160 . fromChunks . (:[])
+hash160BS = ripemd160BS . encode . sha256BS
