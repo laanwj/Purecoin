@@ -12,7 +12,7 @@ import Data.NEList (NEList(..), (<|), appendNE, toList)
 import Data.ByteString (append)
 import Purecoin.Utils (nonNegativeByteStringBE)
 import Purecoin.Core.Serialize (encode)
-import Purecoin.Core.Script (MakeHash, scriptOps, opsScript, doScript, execScriptMonad)
+import Purecoin.Core.Script (MakeHash, scriptOps, opsScript, opsStackScript, doScript, execScriptMonad)
 import Purecoin.Core.Hash (Hash, hash, hashBS)
 import Purecoin.Core.DataTypes ( TxInput(..)
                                , GeneralizedTx(..), Tx
@@ -90,7 +90,7 @@ getTxInputs :: Tx -> [(TxInput, MakeHash)]
 getTxInputs tx = map result . selections . toList . txIn $ tx
   where
    result (l, m, r) = (m, makeHash l m r)
-   setScript s txi = txi{txiScript = opsScript s}
+   setScript s txi = txi{txiScript = s}
    makeHash l m r script sig = fromMaybe 1 $ do
      ntx <- newTx
      return . nonNegativeByteStringBE . encode . hashBS $ encode ntx `append` csHashType sig
@@ -105,9 +105,9 @@ getTxInputs tx = map result . selections . toList . txIn $ tx
             | otherwise          = l' `appendNE` (m' <| r')
        where
         l' = map clear l
-        m' = setScript script m
+        m' = setScript (opsStackScript script) m
         r' = map clear r
-      clear = clearSequence (csHashKind sig) . setScript []
+      clear = clearSequence (csHashKind sig) . setScript (opsScript [])
       clearSequence SIGHASH_ALL txi = txi
       clearSequence _           txi = txi{txiSequence = 0}
       newOut SIGHASH_ALL    = return . toList . txOut $ tx

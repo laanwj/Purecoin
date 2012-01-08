@@ -76,7 +76,8 @@ module Purecoin.Core.Script
            , OP_NOP1, OP_NOP2, OP_NOP3, OP_NOP4, OP_NOP5
            , OP_NOP6, OP_NOP7, OP_NOP8, OP_NOP9, OP_NOP10
            ), opPushData, opView
-       , Script, scriptOps, opsScript, nullScript
+       , Script, scriptOps, opsScript, opsStackScript, nullScript
+       , Stack(..)
        , MakeHash, ScriptMonad, doScript, execScriptMonad
        ) where
 
@@ -87,6 +88,7 @@ import Control.Applicative (Applicative, pure, (<$>), (<*>))
 import Control.Monad (MonadPlus, guard, when)
 import qualified Control.Monad.Reader as MR
 import qualified Control.Monad.State as MS
+import Control.Monad.Trans (lift)
 import Data.ByteString (ByteString, length)
 import Purecoin.Core.Serialize
        ( Serialize, Get, Put
@@ -110,6 +112,8 @@ import Purecoin.Utils (integerByteStringLE, integerToByteStringLE)
    Use opPushData to construct constants.
    Use opView to deconstruct these constants.
 -}
+type Block = [OP]
+
 data OP = OP_PUSHDATA !WS.Word8s  -- length must be less than 76
         | OP_PUSHDATA1 !WS.Word8s -- length must be less than 2^8
         | OP_PUSHDATA2 !WS.Word8s -- length must be less than 2^16
@@ -118,8 +122,8 @@ data OP = OP_PUSHDATA !WS.Word8s  -- length must be less than 76
         | OP_1 | OP_2 | OP_3 | OP_4 | OP_5 | OP_6 | OP_7 | OP_8
         | OP_9 | OP_10 | OP_11 | OP_12 | OP_13 | OP_14 | OP_15 | OP_16
         | OP_NOP
-        | OP_IF (NEList [OP])
-        | OP_NOTIF (NEList [OP])
+        | OP_IF (NEList Block)
+        | OP_NOTIF (NEList Block)
         | OP_VERIFY
         | OP_RETURN
         | OP_TOALTSTACK
@@ -195,7 +199,7 @@ data OP = OP_PUSHDATA !WS.Word8s  -- length must be less than 76
 
 data IfTerminator = OP_ELSE | OP_ENDIF
 
-getIfBlock :: Get (NEList [OP])
+getIfBlock :: Get (NEList Block)
 getIfBlock = go =<< getOp
  where
   go (Left OP_ENDIF) = return (NENil [])
@@ -469,8 +473,17 @@ scriptOps (Script ws) = runGet getOps . WS.toByteString $ ws
   go (Left OP_ENDIF) = fail "scriptOps: Unexpected OP_ENDIF"
   go (Right op) = (op:) <$> getOps
 
-opsScript :: [OP] -> Script
-opsScript = Script . WS.fromByteString . runPut . mapM_ putOp
+data Stack = End Block
+           | Push (NEList Block) Stack
+
+opsStackScript :: Stack -> Script
+opsStackScript = Script . WS.fromByteString . runPut . putStack
+ where
+  putStack (End end)           = mapM_ putOp end
+  putStack (Push ifblock rest) = putIfBlock ifblock >> putStack rest
+
+opsScript :: Block -> Script
+opsScript = opsStackScript . End
 
 nullScript :: Script
 nullScript = opsScript []
@@ -485,11 +498,13 @@ asBool bs = integerByteStringLE bs /= 0
           success means that the top of the stack is non-zero (see previous line)
           All if statements are terminated between invocations of runScript
 -}
-runScript :: MakeHash -> [OP] -> MS.StateT ([ByteString],[ByteString]) Maybe ()
-runScript mkHash script = mapM_ go script
+runScript :: (Block -> Stack) -> MakeHash -> Block -> MS.StateT ([ByteString],[ByteString],CoinSignature -> Integer) Maybe ()
+runScript context mkHash script = stacks script
  where
-  getMain = do {(main,_) <- MS.get; return main}
-  putMain x = do MS.modify $ \(_,alt) -> (x,alt)
+  stacks [] = return ()
+  stacks (h:t) = MR.runReaderT (go h) (context t) >> stacks t
+  getMain = do {(main,_,_) <- MS.get; return main}
+  putMain x = do MS.modify $ \(_,alt,script) -> (x,alt,script)
   pop = do {(top:bot) <- getMain; putMain bot; return top}
   peek = do {(top:_) <- getMain; return top}
   push x = do {main <- getMain; putMain (x:main)}
@@ -498,15 +513,15 @@ runScript mkHash script = mapM_ go script
   pushBool True  = pushInteger 1
   pushBool False = pushInteger 0
   popBool = asBool <$> pop
-  checkSig pubkeycode sigcode = either (const False) (const True)
-                              $ do pubkey <- decode pubkeycode
-                                   sig <- decode sigcode
-                                   let check = verifySignature pubkey (mkHash script sig) (csSig sig)
-                                   guard check
-  checkMultiSig _ [] = True
-  checkMultiSig [] _ = False
-  checkMultiSig (pk:pks) (sig:sigs) | npks < nsigs = False -- short circut failure
-                                    | otherwise    = checkMultiSig pks (if checkSig pk sig then sigs else sig:sigs)
+  checkSig hasher pubkeycode sigcode = either (const False) (const True)
+                                     $ do pubkey <- decode pubkeycode
+                                          sig <- decode sigcode
+                                          let check = verifySignature pubkey (hasher sig) (csSig sig)
+                                          guard check
+  checkMultiSig _ _ [] = True
+  checkMultiSig _ [] _ = False
+  checkMultiSig hasher (pk:pks) (sig:sigs) | npks < nsigs = False -- short circut failure
+                                           | otherwise    = checkMultiSig hasher pks (if checkSig hasher pk sig then sigs else sig:sigs)
    where
     npks, nsigs :: Integer
     npks  = genericLength pks
@@ -519,7 +534,8 @@ runScript mkHash script = mapM_ go script
   go OP_VERIFY              = do {t <- popBool; guard t}
   go OP_CHECKSIG            = do pubkeycode <- pop
                                  sigcode <- pop
-                                 pushBool (checkSig pubkeycode sigcode)
+                                 (_,_,hasher) <- MS.get
+                                 pushBool (checkSig hasher pubkeycode sigcode)
   go OP_CHECKSIGVERIFY      = go OP_CHECKSIG >> go OP_VERIFY
   go OP_HASH160             = do {t1 <- pop; push . encode . hash160BS $ t1}
   go OP_EQUAL               = do {t1 <- pop; t2 <- pop; pushBool (t1 == t2)}
@@ -544,10 +560,10 @@ runScript mkHash script = mapM_ go script
   go OP_16                  = pushInteger 16
   go OP_NOP                 = return ()
   go OP_RETURN              = fail "OP_RETURN called"
-  go OP_TOALTSTACK          = do (x1:main, alt) <- MS.get
-                                 MS.put (main, x1:alt)
-  go OP_FROMALTSTACK        = do (main, x1:alt) <- MS.get
-                                 MS.put (x1:main, alt)
+  go OP_TOALTSTACK          = do (x1:main, alt, script) <- MS.get
+                                 MS.put (main, x1:alt, script)
+  go OP_FROMALTSTACK        = do (main, x1:alt, script) <- MS.get
+                                 MS.put (x1:main, alt, script)
   go OP_IFDUP               = do {t <- peek; when (asBool t) (push t)}
   go OP_DEPTH               = do {main <- getMain; pushInteger (genericLength main)}
   go OP_DROP                = do (_:main) <- getMain
@@ -611,13 +627,17 @@ runScript mkHash script = mapM_ go script
                                  guard (nsig <= npk);
                                  sigcodes <- reverseReplicateM nsig pop
                                  _ <- pop -- Due to a bug in the protocol there is an extra pop here.
-                                 pushBool (checkMultiSig pubkeycodes sigcodes)
+                                 (_,_,hasher) <- MS.get
+                                 pushBool (checkMultiSig hasher pubkeycodes sigcodes)
   go OP_CHECKMULTISIGVERIFY = go OP_CHECKMULTISIG >> go OP_VERIFY
   go (OP_IF blk)            = goIfBlock blk =<< popBool
   go (OP_NOTIF blk)         = goIfBlock blk =<< not <$> popBool
   go OP_RIPEMD160           = do {t1 <- pop; push . encode . ripemd160BS $ t1}
   go OP_SHA256              = do {t1 <- pop; push . encode . sha256BS $ t1}
   go OP_HASH256             = do {t1 <- pop; push . encode . hashBS $ t1}
+  go OP_CODESEPARATOR       = do stack <- MR.ask
+                                 (main,alt,_) <- MS.get
+                                 MS.put (main,alt,mkHash stack)
   go OP_NOP1                = return ()
   go OP_NOP2                = return ()
   go OP_NOP3                = return ()
@@ -643,9 +663,12 @@ runScript mkHash script = mapM_ go script
   go x@OP_MOD               = fail $ "operation" ++ show x ++ " is disabled"
   go x@OP_LSHIFT            = fail $ "operation" ++ show x ++ " is disabled"
   go x@OP_RSHIFT            = fail $ "operation" ++ show x ++ " is disabled"
-  goIfBlock (NENil ops) True = mapM_ go ops
-  goIfBlock (NENil _  ) False = return ()
-  goIfBlock (NECons ops rest) True = mapM_ go ops >> goIfBlock rest False
+  goIfBlock (NENil ops) True        = do stack <- MR.ask
+                                         lift $ runScript (\bl -> Push (NENil bl) stack) mkHash ops
+  goIfBlock (NENil _  ) False       = return ()
+  goIfBlock (NECons ops rest) True  = do stack <- MR.ask
+                                         lift $ runScript (\bl -> Push (NECons bl rest) stack) mkHash ops
+                                         goIfBlock rest False
   goIfBlock (NECons _   rest) False = goIfBlock rest True
 
 reverseReplicateM :: (MonadPlus m) => Integer -> m a -> m [a]
@@ -657,7 +680,7 @@ reverseReplicateM n cmd = go n []
    go m l | 0 < m = do { i <- cmd; go (m-1) (i:l) }
           | otherwise = fail "reverseReplicateM given negative number"
 
-type MakeHash = [OP] -> CoinSignature -> Integer
+type MakeHash = Stack -> CoinSignature -> Integer
 
 newtype ScriptMonad a = ScriptMonad (MR.ReaderT MakeHash (MS.StateT ([ByteString]) Maybe) a)
 
@@ -673,12 +696,12 @@ instance Monad ScriptMonad where
   fail = ScriptMonad . fail
   ScriptMonad x >>= f = ScriptMonad $ (x >>= \x' -> let ScriptMonad y' = f x' in y')
 
-doScript :: [OP] -> ScriptMonad ()
+doScript :: Block -> ScriptMonad ()
 doScript script = ScriptMonad . MR.ReaderT $ go
  where
-  go mkHash = MS.StateT (\inStack -> proj <$> MS.runStateT (runScript mkHash script) (inStack,[]))
+  go mkHash = MS.StateT (\inStack -> proj <$> MS.runStateT (runScript End mkHash script) (inStack,[], mkHash (End script)))
    where
-    proj (a, (outStack,_)) = (a, outStack)
+    proj (a, (outStack,_,_)) = (a, outStack)
 
 execScriptMonad :: MakeHash -> ScriptMonad () -> Maybe ()
 execScriptMonad mkHash (ScriptMonad sm) = do
