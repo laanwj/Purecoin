@@ -82,6 +82,7 @@ module Purecoin.Core.Script
        ) where
 
 import Prelude hiding (length)
+import Data.Word (Word8)
 import Data.List (intersperse, intercalate, tails, genericLength, genericSplitAt)
 import Data.NEList (NEList(..), toList, headTailView, (<|))
 import Control.Applicative (Applicative, pure, (<$>), (<*>))
@@ -195,6 +196,7 @@ data OP = OP_PUSHDATA !WS.Word8s  -- length must be less than 76
         | OP_CHECKMULTISIGVERIFY
         | OP_NOP1 | OP_NOP2 | OP_NOP3 | OP_NOP4 | OP_NOP5
         | OP_NOP6 | OP_NOP7 | OP_NOP8 | OP_NOP9 | OP_NOP10
+        | OP_UNKNOWN Word8
         deriving (Eq, Show)
 
 data IfTerminator = OP_ELSE | OP_ENDIF
@@ -244,6 +246,8 @@ getOp = code =<< getWord8
                return (Right (OP_IF ifBlock))
   code 100 = do ifBlock <- getIfBlock
                 return (Right (OP_NOTIF ifBlock))
+  code 101 = fail "OP_VERIF" -- OP_VERIF can never be in a validating script
+  code 102 = fail "OP_VERNOTIF" -- OP_VERNOTIF can never be in a validating script
   code 103 = return (Left OP_ELSE)
   code 104 = return (Left OP_ENDIF)
   code 105 = return (Right OP_VERIFY)
@@ -325,7 +329,7 @@ getOp = code =<< getWord8
   code 183 = return (Right OP_NOP8)
   code 184 = return (Right OP_NOP9)
   code 185 = return (Right OP_NOP10)
-  code x = fail $ "Unknown OP code: " ++ show x
+  code x   = return (Right (OP_UNKNOWN x))
 
 putIfBlock :: NEList [OP] -> Put
 putIfBlock blk = sequence_ (intersperse (putWord8 103) (map (mapM_ putOp) (toList blk))) >> putWord8 104
@@ -438,6 +442,7 @@ putOp OP_NOP7 = putWord8 182
 putOp OP_NOP8 = putWord8 183
 putOp OP_NOP9 = putWord8 184
 putOp OP_NOP10 = putWord8 185
+putOP (OP_UNKNOWN x) = putWord8 x
 
 opPushData :: WS.Word8s -> OP
 opPushData ws | len <= 75  = OP_PUSHDATA ws
@@ -663,6 +668,7 @@ runScript context mkHash script = stacks script
   go x@OP_MOD               = fail $ "operation" ++ show x ++ " is disabled"
   go x@OP_LSHIFT            = fail $ "operation" ++ show x ++ " is disabled"
   go x@OP_RSHIFT            = fail $ "operation" ++ show x ++ " is disabled"
+  go (OP_UNKNOWN x)         = fail $ "unknown operation " ++ show x
   goIfBlock (NENil ops) True        = do stack <- MR.ask
                                          lift $ runScript (\bl -> Push (NENil bl) stack) mkHash ops
   goIfBlock (NENil _  ) False       = return ()
