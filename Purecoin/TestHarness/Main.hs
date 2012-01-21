@@ -119,7 +119,7 @@ printTx :: MainIO a ()
 printTx = do
   dbp <- askDb
   db <- liftIO $ readIORef dbp
-  liftIO . putStrLn . fromMaybe "Db Empty!" . fmap (\x -> "Number of unclaimed coins: "++show (coinMapSize x)) . getCoinMap $ db
+  liftIO . putStrLn . (\x -> "Number of unclaimed coins: "++show (coinMapSize x)) . getCoinMap $ db
 
 main :: IO ()
 main =

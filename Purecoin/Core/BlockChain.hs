@@ -10,7 +10,7 @@ import Data.Monoid (mempty, mconcat)
 import Data.Time (UTCTime, addUTCTime, diffUTCTime, getCurrentTime)
 import Data.Word (Word32)
 import Control.Monad.State as SM
-import qualified Data.PSQueue as PSQ
+import qualified Purecoin.PSQueue as PSQ
 import Data.NEList (NEList(..), toList)
 import qualified Purecoin.WordArray as WS
 import Purecoin.Core.Hash (Hash, hash0, hash)
@@ -75,8 +75,8 @@ newChain version time difficulty nonce =
   genesisNumber = 0
   theTimes = WS.fromAscii "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
 
-getCoinMap :: BlockChain a -> Maybe CoinMap
-getCoinMap bc = (biCoinMap . PSQ.prio) <$> (PSQ.findMin . bcChain $ bc)
+getCoinMap :: BlockChain a -> CoinMap
+getCoinMap = biCoinMap . PSQ.prio . PSQ.findMin . bcChain
 
 addBlock :: Block -> IO (BlockChain a -> Either String (BlockChain a))
 addBlock bl = do ct <- getCurrentTime
