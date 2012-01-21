@@ -20,7 +20,7 @@ import Purecoin.Core.Hash
 import Purecoin.Core.Transaction
 import Purecoin.Core.BlockChain
 import Purecoin.Network.DataTypes
-import qualified Purecoin.Network.MainNet as Network
+import qualified Purecoin.Network.TestNet as Network
 
 import Data.IORef
 import Debug.Trace
