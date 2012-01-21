@@ -31,11 +31,11 @@ difficultyLevel x = target Network.difficulty % target x
 
 instance Show Difficulty where
   show x = show (fromRational . difficultyLevel $ x :: Double)
-   
+
 instance Show Block where
   show b = show (hash (bCoinBase b))++":"++show (bCoinBase b)++"::"
         ++ concatMap (\x -> (show (hash x))++":"++(show x)) (bTxs b)
-                   
+
 mkIPv4 :: [Word8] -> ByteString
 mkIPv4 [a,b,c,d] = BS.pack (replicate 10 0 ++ [0xff,0xff] ++ [a,b,c,d])
 
@@ -44,14 +44,14 @@ toIOError = either (throwError . strMsg) return
 
 joinIOError :: IO (Either String a) -> IO a
 joinIOError x = x >>= toIOError
-             
+
 hGetWord32le :: Handle -> IO Word32
-hGetWord32le h = joinIOError $ runGet getWord32le `fmap` hGet h 4 
+hGetWord32le h = joinIOError $ runGet getWord32le `fmap` hGet h 4
 
 putPacket :: String -> ByteString -> ByteString
 putPacket name payload = runPut
                    $ mapM_ putWord8 Network.magic
-                  >> putByteString name' 
+                  >> putByteString name'
                   >> putWord32le (fromIntegral (BS.length payload))
                   >> unless (name `elem` ["version", "verack"]) (putByteString checksum)
                   >> putByteString payload
@@ -99,7 +99,7 @@ getPacket = do
   passHeader h (m:ms) = do
     [x] <- BS.unpack `fmap` hGet h 1
     if x == m then passHeader h ms else passHeader h Network.magic
-    
+
 myVersion :: MainIO a Version
 myVersion = do ct <- liftIO getCurrentTime
                n <- askNonce
@@ -122,7 +122,7 @@ printTx = do
   liftIO . putStrLn . fromMaybe "Db Empty!" . fmap (\x -> "Number of unclaimed coins: "++show (coinMapSize x)) . getCoinMap $ db
 
 main :: IO ()
-main = 
+main =
   bracket (connectTo "127.0.0.1" (PortNumber Network.port)) hClose
   $ \h ->
      do
@@ -135,11 +135,11 @@ main =
        liftIO $ putStrLn command
        liftIO $ print (map (flip showHex "") (unpack payload))
        liftIO $ print =<< (toIOError (decode payload) :: IO Version)
-       
+
        liftIO $ print (map (flip showHex "") (unpack (putPacket "verack" BS.empty)))
        liftIO $ print (map (flip showHex "") (unpack (putPacket "getblocks" (encode (GetBlocks protocolVersion [hash0] hash0)))))
        liftIO $ print (map (flip showHex "") (unpack (putPacket "getaddr" BS.empty)))
-       
+
        hPutPacket "verack" BS.empty
        -- hPutPacket "getaddr" BS.empty
        -- hPutPacket "getdata" (encode (Inv [InventoryVector 2 testGenesis]))
@@ -151,18 +151,18 @@ main =
   run "tx" = runTx
   run "ping" = \_ -> liftIO (putStrLn "ping") >> hPutPacket "ping" BS.empty
   run cmd = \_ -> liftIO $ putStrLn cmd
-  
+
   runTx payload = do
     tx <- liftIO (toIOError $ decode payload :: IO Tx)
     liftIO $ print tx
-  
+
   runInv payload = do
     inv <- liftIO $ inventory `fmap` (toIOError $ decode payload)
     liftIO $ print (length inv)
     liftIO $ mapM_ print inv
     hPutPacket "getblocks" (encode (GetBlocks protocolVersion [ivHash . last $ inv] hash0))
     hPutPacket "getdata" payload
-       
+
   runBlock payload = {-# SCC "runBlock" #-} do
     block <- liftIO (toIOError $ decode payload :: IO Block)
     let bh = bHash block

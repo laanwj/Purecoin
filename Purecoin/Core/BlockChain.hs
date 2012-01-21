@@ -57,7 +57,7 @@ work x = sha256size `div` (target x + 1)
   sha256size = 2^256
 
 newChain :: Word32 -> UTCTime -> Difficulty -> Word32 -> Maybe (BlockChain a)
-newChain version time difficulty nonce = 
+newChain version time difficulty nonce =
   do txo <- txOutput (coinValue genesisNumber) (opsScript [opPushData $ WS.fromList [0x04,0x67,0x8a,0xfd,0xb0,0xfe,0x55,0x48,0x27,0x19,0x67,0xf1,0xa6,0x71,0x30,0xb7,0x10,0x5c,0xd6,0xa8,0x28,0xe0,0x39,0x09,0xa6,0x79,0x62,0xe0,0xea,0x1f,0x61,0xde,0xb6,0x49,0xf6,0xbc,0x3f,0x4c,0xef,0x38,0xc4,0xf3,0x55,0x04,0xe5,0x1e,0xc1,0x12,0xde,0x5c,0x38,0x4d,0xf7,0xba,0x0b,0x8d,0x57,0x8a,0x4c,0x70,0x2b,0x6b,0xf1,0x1d,0x5f],OP_CHECKSIG])
      genesis <- block version hash0 time difficulty nonce (txCoinBase 1 (opsScript [opPushData $ WS.fromList [0xff,0xff,0,0x1d],opPushData $ WS.fromList [0x04],opPushData theTimes]) (NENil txo)) []
      genesisCoins <- either fail return $ prepcbTransaction (coinValue genesisNumber, mempty) (bCoinBase genesis)
@@ -89,7 +89,7 @@ addBlock bl = do ct <- getCurrentTime
   newTimestamp = bTimestamp bl
   updateBlockChain currentTime bc = do newBlockInfo <- go (chain bc prevHash)
                                        return $ bc{bcChain = PSQ.insert (bHash bl) newBlockInfo (bcChain bc)}
-   where                                      
+   where
     maxBits = maxTarget bc
     go [] = fail $ "Previous block "++show prevHash++" not found"
     go theChain@(prevBlockInfo:_) = do checkTarget
