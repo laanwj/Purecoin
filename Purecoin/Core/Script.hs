@@ -100,7 +100,7 @@ import Purecoin.Core.Serialize
        )
 import qualified Purecoin.WordArray as WS
 import Purecoin.Core.Hash (hashBS, hash160BS, ripemd160BS, sha256BS)
-import Purecoin.Core.Signature (CoinSignature, csSig)
+import Purecoin.Core.Signature (HashType, csHashType, csSig)
 import Purecoin.Crypto.EcDsaSecp256k1 (verifySignature)
 import Purecoin.Utils (integerByteStringLE, integerToByteStringLE)
 
@@ -503,7 +503,7 @@ asBool bs = integerByteStringLE bs /= 0
           success means that the top of the stack is non-zero (see previous line)
           All if statements are terminated between invocations of runScript
 -}
-runScript :: (Block -> Stack) -> MakeHash -> Block -> MS.StateT ([ByteString],[ByteString],CoinSignature -> Integer) Maybe ()
+runScript :: (Block -> Stack) -> MakeHash -> Block -> MS.StateT ([ByteString],[ByteString],HashType -> Integer) Maybe ()
 runScript context mkHash script = stacks script
  where
   stacks [] = return ()
@@ -521,7 +521,7 @@ runScript context mkHash script = stacks script
   checkSig hasher pubkeycode sigcode = either (const False) (const True)
                                      $ do pubkey <- decode pubkeycode
                                           sig <- decode sigcode
-                                          let check = verifySignature pubkey (hasher sig) (csSig sig)
+                                          let check = verifySignature pubkey (hasher (csHashType sig)) (csSig sig)
                                           guard check
   checkMultiSig _ _ [] = True
   checkMultiSig _ [] _ = False
@@ -686,7 +686,7 @@ reverseReplicateM n cmd = go n []
    go m l | 0 < m = do { i <- cmd; go (m-1) (i:l) }
           | otherwise = fail "reverseReplicateM given negative number"
 
-type MakeHash = Stack -> CoinSignature -> Integer
+type MakeHash = Stack -> HashType -> Integer
 
 newtype ScriptMonad a = ScriptMonad (MR.ReaderT MakeHash (MS.StateT ([ByteString]) Maybe) a)
 

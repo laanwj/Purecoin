@@ -22,7 +22,8 @@ import Purecoin.Core.DataTypes ( TxInput(..)
                                , BTC
                                )
 import Purecoin.Core.Signature ( HashKind(..)
-                               , csHashKind, csAnyoneCanPay, csHashType)
+                               , HashType, htvAnyoneCanPay, htvHashKind
+                               , hashTypeView, hashTypeCode)
 
 data Coins = Coins [(OutPoint, TxOutput)]
 
@@ -91,23 +92,24 @@ getTxInputs tx = map result . selections . toList . txIn $ tx
   where
    result (l, m, r) = (m, makeHash l m r)
    setScript s txi = txi{txiScript = s}
-   makeHash l m r script sig = fromMaybe 1 $ do
+   makeHash l m r script ht = fromMaybe 1 $ do
      ntx <- newTx
-     return . nonNegativeByteStringBE . encode . hashBS $ encode ntx `append` csHashType sig
+     return . nonNegativeByteStringBE . encode . hashBS $ encode ntx `append` hashTypeCode ht
     where
-      newTx = do out <- newOut (csHashKind sig)
+      htv = hashTypeView ht
+      newTx = do out <- newOut (htvHashKind htv)
                  return Tx{ txVersion = txVersion tx
                           , txIn = newIn
                           , txOut = out
                           , txLock = txLock tx
                           }
-      newIn | csAnyoneCanPay sig = NENil m'
+      newIn | htvAnyoneCanPay htv = NENil m'
             | otherwise          = l' `appendNE` (m' <| r')
        where
         l' = map clear l
         m' = setScript (opsStackScript script) m
         r' = map clear r
-      clear = clearSequence (csHashKind sig) . setScript (opsScript [])
+      clear = clearSequence (htvHashKind htv) . setScript (opsScript [])
       clearSequence SIGHASH_ALL txi = txi
       clearSequence _           txi = txi{txiSequence = 0}
       newOut SIGHASH_ALL    = return . toList . txOut $ tx

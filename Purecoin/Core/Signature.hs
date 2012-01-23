@@ -1,6 +1,8 @@
 module Purecoin.Core.Signature
        ( HashKind(..)
-       , CoinSignature, csSig, csHashKind, csAnyoneCanPay, csHashType
+       , HashTypeView(..)
+       , HashType, hashTypeView, hashTypeCode
+       , CoinSignature(..)
        ) where
 
 import Data.Word (Word8)
@@ -18,24 +20,27 @@ data HashKind = SIGHASH_ALL
               | SIGHASH_SINGLE
               deriving Show
 
-data CoinSignature = CoinSignature { csSig :: Signature
-                                   , csHashType_ :: Word8
-                                   } deriving Show
+data HashTypeView = HashTypeView { htvHashKind :: HashKind 
+                                 , htvAnyoneCanPay :: Bool
+                                 }
 
-csAnyoneCanPay :: CoinSignature -> Bool
-csAnyoneCanPay cs = testBit (csHashType_ cs) 7
+newtype HashType = HashType Word8
 
-csHashKind :: CoinSignature -> HashKind
-csHashKind cs = go (csHashType_ cs .&. 0x1f)
+hashTypeView :: HashType -> HashTypeView
+hashTypeView (HashType w) = HashTypeView (go (w .&. 0x1f)) (testBit w 7)
  where
    go 1 = SIGHASH_ALL
    go 2 = SIGHASH_NONE
    go 3 = SIGHASH_SINGLE
    go _ = SIGHASH_ALL    -- I feel that this is an error in the protocolSubVersion
 
-instance Serialize CoinSignature where
-  get = CoinSignature <$> get <*> getWord8
-  put (CoinSignature sg ht) = put sg >> putWord8 ht
+hashTypeCode :: HashType -> ByteString
+hashTypeCode (HashType w) = runPut . putWord32le . fromIntegral $ w
 
-csHashType :: CoinSignature -> ByteString
-csHashType = runPut . putWord32le . fromIntegral . csHashType_
+data CoinSignature = CoinSignature { csSig :: Signature
+                                   , csHashType :: HashType
+                                   }
+
+instance Serialize CoinSignature where
+  get = CoinSignature <$> get <*> (HashType <$> getWord8)
+  put (CoinSignature sg (HashType ht)) = put sg >> putWord8 ht
