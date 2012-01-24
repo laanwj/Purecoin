@@ -1,5 +1,6 @@
 module Purecoin.Core.Transaction
        ( Coins, CoinMap, emptyCoinMap, coinMapSize, addCoins, addTransaction, prepcbTransaction
+       , getTxInputs
        ) where
 
 import Data.Maybe (fromMaybe)

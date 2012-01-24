@@ -1,5 +1,5 @@
 module Purecoin.Crypto.EcDsaSecp256k1
-       ( Signature, verifySignature
+       ( Signature, verifySignature, unsafeMkSignature
        ) where
 
 import Control.Applicative ((<$>), (<*>))

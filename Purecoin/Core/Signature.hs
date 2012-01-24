@@ -1,12 +1,12 @@
 module Purecoin.Core.Signature
        ( HashKind(..)
        , HashTypeView(..)
-       , HashType, hashTypeView, hashTypeCode
+       , HashType, hashTypeView, hashTypeCode, makeHashType
        , CoinSignature(..)
        ) where
 
 import Data.Word (Word8)
-import Data.Bits ((.&.), testBit)
+import Data.Bits ((.&.), testBit, setBit)
 import Control.Applicative ((<$>), (<*>))
 import Data.ByteString (ByteString)
 import Purecoin.Core.Serialize ( Serialize, runPut
@@ -36,6 +36,14 @@ hashTypeView (HashType w) = HashTypeView (go (w .&. 0x1f)) (testBit w 7)
 
 hashTypeCode :: HashType -> ByteString
 hashTypeCode (HashType w) = runPut . putWord32le . fromIntegral $ w
+
+makeHashType :: HashTypeView -> HashType
+makeHashType (HashTypeView hk acp) | acp = HashType (setBit (go hk) 7)
+                                   | otherwise = HashType (go hk)
+ where
+  go SIGHASH_ALL = 1
+  go SIGHASH_NONE = 2
+  go SIGHASH_SINGLE = 3
 
 data CoinSignature = CoinSignature { csSig :: Signature
                                    , csHashType :: HashType
