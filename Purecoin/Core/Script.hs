@@ -444,20 +444,21 @@ putOp OP_NOP9 = putWord8 184
 putOp OP_NOP10 = putWord8 185
 putOP (OP_UNKNOWN x) = putWord8 x
 
-opPushData :: WS.Word8s -> OP
-opPushData ws | len <= 75  = OP_PUSHDATA ws
+opPushData :: ByteString -> OP
+opPushData bs | len <= 75  = OP_PUSHDATA ws
               | len < 2^8  = OP_PUSHDATA1 ws
               | len < 2^16 = OP_PUSHDATA2 ws
               | len < 2^32 = OP_PUSHDATA4 ws
               | otherwise  = error "op_PushData: Too Large"
  where
+  ws = WS.fromByteString bs
   len = WS.length ws
 
-opView :: OP -> Either WS.Word8s OP
-opView (OP_PUSHDATA ws)  = Left ws
-opView (OP_PUSHDATA1 ws) = Left ws
-opView (OP_PUSHDATA2 ws) = Left ws
-opView (OP_PUSHDATA4 ws) = Left ws
+opView :: OP -> Either ByteString OP
+opView (OP_PUSHDATA ws)  = Left (WS.toByteString ws)
+opView (OP_PUSHDATA1 ws) = Left (WS.toByteString ws)
+opView (OP_PUSHDATA2 ws) = Left (WS.toByteString ws)
+opView (OP_PUSHDATA4 ws) = Left (WS.toByteString ws)
 opView x                 = Right x
 
 newtype Script = Script WS.Word8s deriving (Eq, Show)
