@@ -5,8 +5,8 @@ module Purecoin.Core.DataTypes
        , BTC(..), btc, satoshi, scale
        , TxInput(..)
        , TxOutput, txOutput, txoValue, txoScript, nullOutput
-       , GeneralizedTx(..), Tx, hashTx
-       , TxCoinBase, txCoinBase, txcbVersion, txcbExtraNonce, txcbFinal, txcbOut, txcbLock, hashCoinBase
+       , GeneralizedTx(..), Tx, txHash
+       , TxCoinBase, txCoinBase, txcbVersion, txcbExtraNonce, txcbFinal, txcbOut, txcbLock, txcbHash
        , Block, block, bVersion, bPrevBlock, bMerkle_root, bTimestamp, bBits, bNonce, bCoinBase, bTxs, bHash
        ) where
 
@@ -215,8 +215,8 @@ instance (FromList f, Foldable f) => Serialize (GeneralizedTx f) where
 
   put (Tx v is os t) = putWord32le v >> putList is >> putList os >> put t
 
-hashTx :: Tx -> Hash
-hashTx = hashBS . encode
+txHash :: Tx -> Hash
+txHash = hashBS . encode
 
 -- TODO: Enforce that txcbExtraNonce's length is between 2 and 100
 data TxCoinBase = TxCoinBase { txcbVersion :: Word32
@@ -249,8 +249,8 @@ txcbFinal txcb = txcbFinal_ txcb == maxBound
 txCoinBase :: Word32 -> Script -> NEList TxOutput -> TxCoinBase
 txCoinBase v en os = TxCoinBase v en maxBound os unlocked
 
-hashCoinBase :: TxCoinBase -> Hash
-hashCoinBase = hashBS . encode
+txcbHash :: TxCoinBase -> Hash
+txcbHash = hashBS . encode
 
 -- This should be split into a block header (probably with cached merkle root) and transactions.
 data Block = Block { bVersion :: Word32 -- unused
@@ -290,7 +290,7 @@ bHash bl@(Block v pb t b n _ _) =
                     putWord32le t >> put b >> putWord32le n
 
 bMerkle_root :: Block -> Hash
-bMerkle_root b = merkleHash $ hashCoinBase (bCoinBase b) <| map hashTx (bTxs b)
+bMerkle_root b = merkleHash $ txcbHash (bCoinBase b) <| map txHash (bTxs b)
 
 block :: Word32 -> Hash -> UTCTime -> Difficulty -> Word32 -> TxCoinBase -> [Tx] -> Maybe Block
 block v pb t' b n cb txs = do

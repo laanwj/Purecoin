@@ -33,8 +33,8 @@ instance Show Difficulty where
   show x = show (fromRational . difficultyLevel $ x :: Double)
 
 instance Show Block where
-  show b = show (hashCoinBase (bCoinBase b))++":"++show (bCoinBase b)++"::"
-        ++ concatMap (\x -> (show (hashTx x))++":"++(show x)) (bTxs b)
+  show b = show (txcbHash (bCoinBase b))++":"++show (bCoinBase b)++"::"
+        ++ concatMap (\x -> (show (txHash x))++":"++(show x)) (bTxs b)
 
 mkIPv4 :: [Word8] -> ByteString
 mkIPv4 [a,b,c,d] = BS.pack (replicate 10 0 ++ [0xff,0xff] ++ [a,b,c,d])

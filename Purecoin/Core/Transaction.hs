@@ -16,8 +16,8 @@ import Purecoin.Core.Serialize (encode)
 import Purecoin.Core.Script (MakeHash, scriptOps, opsScript, opsStackScript, doScript, execScriptMonad)
 import Purecoin.Core.Hash (Hash, hashBS)
 import Purecoin.Core.DataTypes ( TxInput(..)
-                               , GeneralizedTx(..), Tx, hashTx
-                               , TxCoinBase, txcbOut, hashCoinBase
+                               , GeneralizedTx(..), Tx, txHash
+                               , TxCoinBase, txcbOut, txcbHash
                                , TxOutput, nullOutput, txoValue, txoScript
                                , OutPoint, outPoint
                                , BTC
@@ -59,14 +59,13 @@ addTransaction tx =
      let ins = mconcat valueInputs
      let outs = mconcat valueOutputs
      unless (outs <= ins)
-            (fail $ "Outputs greater than inputs in Tx: "++show txHash++
+            (fail $ "Outputs greater than inputs in Tx: "++show (txHash tx)++
                     " outs:" ++ show outs ++ " ins:" ++ show ins)
      addCoins =<< maybe (fail "addTransaction: bad coins!!") return cs
      return (ins, outs)
   where
-   txHash = hashTx tx
    txos = toList . txOut $ tx
-   cs = coins txHash txos
+   cs = coins (txHash tx) txos
    valueOutputs = map txoValue txos
    validateTxi (txi, mkHash) = do
      ptxo <- removeCoin . txiPreviousOutput $ txi
@@ -76,17 +75,16 @@ addTransaction tx =
                                                         >> doScript (toList opsCheck)
      return (txoValue ptxo)
     where
-     errMsg = "Script for "++show (txiPreviousOutput txi)++" in transaction "++show txHash++" failed"
+     errMsg = "Script for "++show (txiPreviousOutput txi)++" in transaction "++show (txHash tx)++" failed"
 
 prepcbTransaction :: (BTC,BTC) -> TxCoinBase -> Either String Coins
 prepcbTransaction (ins, otherOuts) tx
   | outs <= ins = maybe (fail "prebcbTransaction: bad coins!!") return $ cs
-  | otherwise   = fail $ "Outputs greater than inputs in coinbase Tx: "++show txHash++
+  | otherwise   = fail $ "Outputs greater than inputs in coinbase Tx: "++show (txcbHash tx)++
                          " outs:" ++ show outs ++ " ins:" ++ show ins
  where
-  txHash = hashCoinBase tx
   txos = toList . txcbOut $ tx
-  cs = coins txHash txos
+  cs = coins (txcbHash tx) txos
   outs = mconcat (map txoValue txos) `mappend` otherOuts
 
 getTxInputs :: Tx -> [(TxInput, MakeHash)]
