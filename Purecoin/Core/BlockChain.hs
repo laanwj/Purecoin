@@ -15,7 +15,7 @@ import qualified Purecoin.PSQueue as PSQ
 import Data.NEList (NEList(..), toList)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
-import Purecoin.Core.Hash (Hash, hash0, hash)
+import Purecoin.Core.Hash (Hash, hash0)
 import Purecoin.Core.Script (opPushData, opsScript, OP(OP_CHECKSIG))
 import Purecoin.Core.DataTypes ( Difficulty, target, fromTarget
                                , lockView, LockView(..)
@@ -144,17 +144,17 @@ addBlock bl = do ct <- getCurrentTime
           -- Try to round the same way the offical client does.
           newDifficulty :: Integer
           newDifficulty = (target lastTarget) * clamp lowerTimeSpan (round timeSpan) upperTimeSpan `div` targetTimeSpan
-        errTarget = "Block "++show (hash bl)++" should have difficulty "++show (target requiredBits)++ " but has difficulty "++show (target newBits)++" instead."
+        errTarget = "Block "++show (bHash bl)++" should have difficulty "++show (target requiredBits)++ " but has difficulty "++show (target newBits)++" instead."
       checkTimestamp = maybe (fail (errTimestamp currentTime)) return
                      $ do pts <- prevTimestamp
                           guard (pts < newTimestamp && newTimestamp <= addUTCTime twoHours currentTime)
        where
         twoHours = 2 * 60 * 60
         prevTimestamp = median . map (biTimestamp) . take 11 $ theChain
-        errTimestamp ct = "Block "++show (hash bl)++" time of "++show newTimestamp++" is before "++show prevTimestamp++" or after currentTime "++show ct
+        errTimestamp ct = "Block "++show (bHash bl)++" time of "++show newTimestamp++" is before "++show prevTimestamp++" or after currentTime "++show ct
       checkFinalTxs = maybe (fail errFinalTxs) return $ guard (all isFinalTx (cbLock:txLocks))
        where
-        errFinalTxs = "Block "++show (hash bl)++" contains non-final transactions" -- more precise error message needed.
+        errFinalTxs = "Block "++show (bHash bl)++" contains non-final transactions" -- more precise error message needed.
         cbLock = (txcbLock &&& txcbFinal) newCoinBase
         txLocks = map (txLock &&& (all txiFinal . toList . txIn)) newTxs
         txiFinal txi = txiSequence txi == maxBound

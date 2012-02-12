@@ -1,5 +1,5 @@
 module Purecoin.Core.Hash
-       ( Hash, hash0, hashBS, hash, merkleHash
+       ( Hash, hash0, hashBS, merkleHash
        , Hash160, hash160BS, sha256BS, ripemd160BS
        ) where
 
@@ -38,9 +38,6 @@ hash0 = Hash mempty
 -- I do not know what is gained by this.
 hashBS :: ByteString -> Hash
 hashBS = Hash . sha256BS . encode . sha256BS
-
-hash :: (Serialize a) => a -> Hash
-hash = hashBS . encode
 
 merkleHash :: NEList Hash -> Hash
 merkleHash (NENil x) = x

@@ -14,10 +14,10 @@ import Data.ByteString (append)
 import Purecoin.Utils (nonNegativeByteStringBE)
 import Purecoin.Core.Serialize (encode)
 import Purecoin.Core.Script (MakeHash, scriptOps, opsScript, opsStackScript, doScript, execScriptMonad)
-import Purecoin.Core.Hash (Hash, hash, hashBS)
+import Purecoin.Core.Hash (Hash, hashBS)
 import Purecoin.Core.DataTypes ( TxInput(..)
-                               , GeneralizedTx(..), Tx
-                               , TxCoinBase, txcbOut
+                               , GeneralizedTx(..), Tx, hashTx
+                               , TxCoinBase, txcbOut, hashCoinBase
                                , TxOutput, nullOutput, txoValue, txoScript
                                , OutPoint, outPoint
                                , BTC
@@ -61,12 +61,12 @@ addTransaction tx =
      unless (outs <= ins)
             (fail $ "Outputs greater than inputs in Tx: "++show txHash++
                     " outs:" ++ show outs ++ " ins:" ++ show ins)
-     cs <- maybe (fail "addTransaction: bad coins!!") return $ coins (hash tx) txos
-     addCoins cs
+     addCoins =<< maybe (fail "addTransaction: bad coins!!") return cs
      return (ins, outs)
   where
-   txHash = hash tx
+   txHash = hashTx tx
    txos = toList . txOut $ tx
+   cs = coins txHash txos
    valueOutputs = map txoValue txos
    validateTxi (txi, mkHash) = do
      ptxo <- removeCoin . txiPreviousOutput $ txi
@@ -80,12 +80,13 @@ addTransaction tx =
 
 prepcbTransaction :: (BTC,BTC) -> TxCoinBase -> Either String Coins
 prepcbTransaction (ins, otherOuts) tx
-  | outs <= ins = maybe (fail "prebcbTransaction: bad coins!!") return $ coins (hash tx) txos
+  | outs <= ins = maybe (fail "prebcbTransaction: bad coins!!") return $ cs
   | otherwise   = fail $ "Outputs greater than inputs in coinbase Tx: "++show txHash++
                          " outs:" ++ show outs ++ " ins:" ++ show ins
  where
-  txHash = hash tx
+  txHash = hashCoinBase tx
   txos = toList . txcbOut $ tx
+  cs = coins txHash txos
   outs = mconcat (map txoValue txos) `mappend` otherOuts
 
 getTxInputs :: Tx -> [(TxInput, MakeHash)]
