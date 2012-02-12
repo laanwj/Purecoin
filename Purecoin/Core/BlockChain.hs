@@ -1,5 +1,6 @@
 module Purecoin.Core.BlockChain
-       (BlockChain, newChain, getCoinMap, addBlock)
+       ( BlockChain, newChain, getCoinMap
+       , AddBlockResult, AddBlockMonad(..), addBlock)
        where
 
 import Control.Applicative ((<$>))
@@ -79,7 +80,20 @@ newChain version time difficulty nonce =
 getCoinMap :: BlockChain a -> CoinMap
 getCoinMap = biCoinMap . PSQ.prio . PSQ.findMin . bcChain
 
-addBlock :: Block -> IO (BlockChain a -> Either String (BlockChain a))
+data AddBlockMonad a = AddBlockResult a
+                     | OrphanBlock Block
+                     | AddBlockError String
+
+type AddBlockResult a = AddBlockMonad (BlockChain a)
+
+instance Monad AddBlockMonad where
+  return = AddBlockResult
+  (AddBlockResult x) >>= f = f x
+  (OrphanBlock b)    >>= f = OrphanBlock b
+  (AddBlockError e)  >>= f = AddBlockError e
+  fail = AddBlockError
+
+addBlock :: Block -> IO (BlockChain a -> AddBlockResult a)
 addBlock bl = do ct <- getCurrentTime
                  return $ updateBlockChain ct
  where
@@ -92,7 +106,7 @@ addBlock bl = do ct <- getCurrentTime
                                        return $ bc{bcChain = PSQ.insert (bHash bl) newBlockInfo (bcChain bc)}
    where
     maxBits = maxTarget bc
-    go [] = fail $ "Previous block "++show prevHash++" not found"
+    go [] = OrphanBlock bl
     go theChain@(prevBlockInfo:_) = do checkTarget
                                        checkTimestamp
                                        checkFinalTxs

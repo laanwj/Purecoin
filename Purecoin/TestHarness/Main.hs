@@ -111,8 +111,11 @@ updateBlock blk = do
   liftIO . putStrLn $ "processing block: "++show (bHash blk)++":"++show (bTimestamp blk)++":"
                       ++ show (sum [length . F.toList . txIn $ tx | tx<-(bTxs blk)])
   modifyBlockChain <- liftIO $ addBlock blk
-  liftIO . atomicModifyIORef dbp 
-         $ \db -> (\x -> (x,())) . either (\err -> trace err db) id . modifyBlockChain $ db
+  let f db = case modifyBlockChain db of
+       AddBlockResult r -> r
+       OrphanBlock b    -> trace ("Orphaned Block: "++show (bHash b)) db
+       AddBlockError e  -> trace e db
+  liftIO $ atomicModifyIORef dbp ((\x -> (x,())) . f)
   -- liftIO $ print =<< readIORef dbp
 
 printTx :: MainIO a ()
