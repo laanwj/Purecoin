@@ -215,6 +215,7 @@ instance (FromList f, Foldable f) => Serialize (GeneralizedTx f) where
 
   put (Tx v is os t) = putWord32le v >> putList is >> putList os >> put t
 
+-- TODO: Enforce that txcbExtraNonce's length is between 2 and 100
 data TxCoinBase = TxCoinBase { txcbVersion :: Word32
                              , txcbExtraNonce :: Script
                              , txcbFinal_ :: Word32
