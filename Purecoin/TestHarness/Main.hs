@@ -53,7 +53,7 @@ putPacket name payload = runPut
                    $ mapM_ putWord8 Network.magic
                   >> putByteString name'
                   >> putWord32le (fromIntegral (BS.length payload))
-                  >> unless (name `elem` ["version", "verack"]) (putByteString checksum)
+                  >> putByteString checksum
                   >> putByteString payload
  where
   name' = BS.pack (take 12 (map (toEnum . fromEnum) name ++ repeat 0))
@@ -91,7 +91,7 @@ getPacket = do
     command <- unpack `fmap` hGet h 12
     let name = map (toEnum.fromEnum) . takeWhile (/= 0) $ command
     len <- hGetWord32le h
-    unless (name `elem` ["version", "verack"]) (hGet h 4 >> return ())
+    hGet h 4 >> return ()
     payload <- hGet h (fromIntegral len)
     return (name, payload)
  where
